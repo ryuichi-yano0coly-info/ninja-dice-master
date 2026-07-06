@@ -2046,53 +2046,6 @@ function ZorumeOverlay({
 }
 
 /* ============================================================
-   TRANSITION — ぞろ目(アタック/スティール)からミニゲームへの全画面ワイプ
-   中盤フレームで画面を完全に覆い、その瞬間に onMid で画面遷移して切替を隠す。
-   ============================================================ */
-function TransitionOverlay({
-  type,
-  onMid,
-  onDone
-}) {
-  const N = 12;
-  const [f, setF] = useState(0);
-  const midDone = useRef(false),
-    doneRef = useRef(false);
-  useEffect(() => {
-    (type === 'attack' ? SFX.attack : SFX.steal)();
-    let i = 0;
-    const t = setInterval(() => {
-      i++;
-      if (i === Math.floor(N / 2) && !midDone.current) {
-        midDone.current = true;
-        onMid && onMid();
-      } // 画面が覆われた瞬間に遷移
-      if (i > N - 1) {
-        clearInterval(t);
-        if (!doneRef.current) {
-          doneRef.current = true;
-          onDone && onDone();
-        }
-        return;
-      }
-      setF(i);
-    }, 100);
-    return () => clearInterval(t);
-  }, []);
-  const name = type === 'attack' ? 'Trans_Attack' : 'Trans_Steal';
-  return /*#__PURE__*/React.createElement("div", {
-    className: "screen-transition"
-  }, Array.from({
-    length: N
-  }).map((_, n) => /*#__PURE__*/React.createElement(Img, {
-    key: n,
-    src: IMG + name + '_' + (n + 1) + '.png',
-    className: "st-frame" + (n === f ? ' on' : ''),
-    fallback: null
-  })));
-}
-
-/* ============================================================
    SCREEN 03 — BONUS ROLL（金色の3Dダイス1個。メインと同じ跳ね上げ→転がり→着地）
    ============================================================ */
 const BONUS_SLOTS = ['front', 'top', 'right', 'left', 'bottom', 'back'];
@@ -2561,6 +2514,7 @@ function AttackResult({
 function StealScreen({
   opponentName,
   opponentCoins = 0,
+  opponentImg = '',
   betMult = 1,
   onReceive,
   stealMult = 1,
@@ -2641,15 +2595,28 @@ function StealScreen({
     })
   }), /*#__PURE__*/React.createElement("div", {
     className: "mini-bar"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe-face"
+  }, /*#__PURE__*/React.createElement(Img, {
+    key: opponentImg,
+    src: opponentImg,
+    className: "sff-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "sff-emoji"
+    }, "👺")
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe-info"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "ghost-label"
-  }, "🥷 ", opponentName, "に潜入"), /*#__PURE__*/React.createElement("span", {
-    className: "foe-coins"
+    className: "steal-foe-name"
+  }, "🥷 ", opponentName), /*#__PURE__*/React.createElement("span", {
+    className: "steal-foe-coins"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'Koban_Small.png',
     className: "fc-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "💰")
-  }), fmt(opponentCoins)), /*#__PURE__*/React.createElement("button", {
+  }), fmt(opponentCoins)))), /*#__PURE__*/React.createElement("button", {
     className: "ghost-btn danger",
     onClick: () => onReceive(0)
   }, "逃げる")), /*#__PURE__*/React.createElement(ScrollBanner, {
@@ -4461,6 +4428,7 @@ function MultiplierOverlay({
   base,
   result,
   summon = null,
+  boxReward = null,
   pool,
   betMult = 1,
   onDone
@@ -4567,7 +4535,37 @@ function MultiplierOverlay({
     }, "🥷")
   }), /*#__PURE__*/React.createElement("span", {
     className: "jp-summon-txt"
-  }, "仲間召喚！ ", /*#__PURE__*/React.createElement("b", null, summon.char.name), /*#__PURE__*/React.createElement("br", null), "かけら +", summon.amount)), /*#__PURE__*/React.createElement("div", {
+  }, "仲間召喚！ ", /*#__PURE__*/React.createElement("b", null, summon.char.name), /*#__PURE__*/React.createElement("br", null), "かけら +", summon.amount)), boxReward && /*#__PURE__*/React.createElement("div", {
+    className: "jp-boxreward"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "jp-box-head"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'TreasureBox_Open.png',
+    className: "jp-box-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎁")
+  }), "宝箱の中身"), /*#__PURE__*/React.createElement("div", {
+    className: "jp-box-tile " + boxReward.type
+  }, boxReward.type === 'card' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
+    src: boxReward.card.img,
+    className: "jp-box-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 28
+      }
+    }, "🎴")
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "jp-box-cap"
+  }, boxReward.card.gold ? '★' : '', "カード")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
+    src: charThumb(boxReward.char.id),
+    className: "jp-box-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 28
+      }
+    }, "🥷")
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "jp-box-cap"
+  }, boxReward.char.name, /*#__PURE__*/React.createElement("br", null), "かけら +", boxReward.amount)))), /*#__PURE__*/React.createElement("div", {
     className: "mult-tap"
   }, "タップで受け取る"))));
 }
@@ -4667,7 +4665,6 @@ function App() {
   const [screen, setScreen] = useState(initScreen);
   const [flow, setFlow] = useState(initFlow);
   const [zorumeFace, setZorumeFace] = useState(null);
-  const [trans, setTrans] = useState(null); // {type,dest,data} 全画面トランジション
   const [multFx, setMultFx] = useState(null); // {base, mult} ジャックポット等の倍率演出
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
   const [toast, setToast] = useState('');
@@ -5045,26 +5042,22 @@ function App() {
         trigger: 'coin'
       }); // 小判ゾロ目のみボーナスルーレット
     } else if (f === 'attack') {
-      setTrans({
-        type: 'attack',
-        dest: 'attackSelect',
-        data: {
-          bonusResult: rollBonusDice('attack')
-        }
-      }); // Attackはトランジション経由でミニゲーム直行
+      go('attackSelect', {
+        bonusResult: rollBonusDice('attack')
+      }); // Attackはミニゲーム直行
     } else if (f === 'steal') {
-      setTrans({
-        type: 'steal',
-        dest: 'steal',
-        data: {}
-      }); // Stealはトランジション経由でミニゲーム直行
+      go('steal', {}); // Stealはミニゲーム直行
     } else if (f === 'jackpot') {
       const res = rollBonusDice('jackpot'); // Jackpotは報酬スロット演出（どの報酬かを見せる）
       const summon = res.companion ? rollCompanionSummon() : null; // 仲間召喚：どの仲間のかけらを何枚もらえるか事前確定
+      // 宝箱面（お宝箱/大当たり/レア確定）は箱の中身（カード or 仲間のかけら）も必ず付与。以前はコインに畳み込むだけで「何も出ない」ように見えていた。
+      // レア確定はGOLDカード率を高める。超JPは仲間召喚が主報酬なので箱は付けない。
+      const boxReward = res.treasure && !res.companion ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
       setMultFx({
         base: coinBaseForStage(stage),
         result: res,
-        summon
+        summon,
+        boxReward
       });
     } else {
       go('main');
@@ -5172,7 +5165,7 @@ function App() {
     setAuto: setAuto,
     rollAnim: rollAnim,
     onToggleRollAnim: toggleRollAnim,
-    paused: !!multFx || shieldFx || !!zorumeFace || !!trans,
+    paused: !!multFx || shieldFx || !!zorumeFace,
     equipped: equippedChar,
     freeRollChance: eff.freeRollChance,
     cardDropBonus: eff.cardDropBonus,
@@ -5197,6 +5190,7 @@ function App() {
   }), screen === 'steal' && /*#__PURE__*/React.createElement(StealScreen, {
     opponentName: opponent.name,
     opponentCoins: opponent.coins,
+    opponentImg: opponent.img,
     betMult: bet,
     onReceive: onStealReceive,
     stealMult: eff.stealMult,
@@ -5298,18 +5292,16 @@ function App() {
   }, charPopup.pending ? `ステージ${charPopup.char.unlockStage}で仲間になる` : charPopup.char.desc))), zorumeFace && /*#__PURE__*/React.createElement(ZorumeOverlay, {
     faceId: zorumeFace,
     onComplete: onZorumeComplete
-  }), trans && /*#__PURE__*/React.createElement(TransitionOverlay, {
-    type: trans.type,
-    onMid: () => go(trans.dest, trans.data),
-    onDone: () => setTrans(null)
   }), multFx && /*#__PURE__*/React.createElement(MultiplierOverlay, {
     base: multFx.base,
     result: multFx.result,
     summon: multFx.summon,
+    boxReward: multFx.boxReward,
     pool: BONUS_DICE_TABLES.jackpot,
     betMult: bet,
     onDone: total => {
       const summon = multFx.summon;
+      const boxReward = multFx.boxReward;
       setMultFx(null);
       const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus));
       addCoins(g);
@@ -5319,6 +5311,10 @@ function App() {
         const stageNote = summon.char.unlockStage > stage ? `（ステージ${summon.char.unlockStage}で解放）` : '';
         showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}${stageNote}`);
       }, 450);
+      if (boxReward) setTimeout(() => {
+        grantStealRewards([boxReward]);
+        showToast(boxReward.type === 'card' ? `🎁 宝箱：${boxReward.card.gold ? '★GOLD ' : ''}カード獲得！` : `🎁 宝箱：${boxReward.char.name}のかけら +${boxReward.amount}`);
+      }, 700);
     }
   }), shieldFx && /*#__PURE__*/React.createElement(ShieldOverlay, {
     onDone: () => {

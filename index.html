@@ -493,11 +493,17 @@
     .foe-coins { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-size:13px; font-weight:900; color:#F0C040;
       background:rgba(0,0,0,.5); border:1.5px solid rgba(240,192,64,.6); padding:5px 11px; border-radius:999px; }
     .foe-coins .fc-ico { width:16px; height:16px; object-fit:contain; }
+    /* スティール画面の相手情報（顔＋名前＋所持金） */
+    .steal-foe { display:flex; align-items:center; gap:9px; background:rgba(0,0,0,.5); border:1.5px solid rgba(255,255,255,.28); padding:5px 12px 5px 5px; border-radius:999px; min-width:0; }
+    .steal-foe-face { width:38px; height:38px; border-radius:50%; overflow:hidden; flex:0 0 auto; background:rgba(255,255,255,.12); border:2px solid rgba(240,192,64,.7); display:flex; align-items:center; justify-content:center; }
+    .steal-foe-face .sff-img { width:100%; height:100%; object-fit:cover; }
+    .steal-foe-face .sff-emoji { font-size:22px; }
+    .steal-foe-info { display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .steal-foe-name { font-size:13px; font-weight:900; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+    .steal-foe-coins { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:900; color:#F0C040; }
+    .steal-foe-coins .fc-ico { width:14px; height:14px; object-fit:contain; }
 
     /* ============ SCREEN 02 — ZORUME OVERLAY ============ */
-    .screen-transition { position:absolute; inset:0; z-index:9999; pointer-events:none; overflow:hidden; }
-    .screen-transition .st-frame { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; }
-    .screen-transition .st-frame.on { opacity:1; }
     .zorume-overlay { position: absolute; inset: 0; z-index: 9999; overflow: hidden; }
     .z-flash { position: absolute; inset: 0; background:#fff; opacity:0; animation: zFlash .5s ease-out; }
     @keyframes zFlash { 0%{opacity:0;} 20%{opacity:.9;} 100%{opacity:0;} }
@@ -877,6 +883,15 @@
     .jp-summon-ico { width:46px; height:46px; object-fit:contain; flex:0 0 auto; }
     .jp-summon-txt { font-size:14px; font-weight:800; color:#fff; text-align:left; line-height:1.25; }
     .jp-summon-txt b { color:#fde68a; }
+    /* ジャックポット宝箱の中身（カード or 仲間かけら） */
+    .jp-boxreward { display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:2px; padding:8px 16px; border-radius:16px;
+      background:rgba(0,0,0,.4); border:1.5px solid rgba(240,192,64,.55); box-shadow:0 0 14px rgba(240,192,64,.35); animation: jpBoxIn .5s ease both; }
+    .jp-box-head { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:900; color:#fde68a; }
+    .jp-box-ico { width:20px; height:20px; object-fit:contain; }
+    .jp-box-tile { display:flex; flex-direction:column; align-items:center; gap:3px; }
+    .jp-box-img { width:60px; height:60px; object-fit:contain; filter:drop-shadow(0 2px 5px rgba(0,0,0,.5)); }
+    .jp-box-cap { font-size:12px; font-weight:800; color:#fff; text-align:center; line-height:1.2; }
+    @keyframes jpBoxIn { from { opacity:0; transform:scale(.7) translateY(8px); } to { opacity:1; transform:none; } }
     .mult-inner { position:relative; z-index:2; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; }
     .mult-label { font-size:22px; font-weight:900; color:#F0C040; text-shadow:0 2px 8px #000; }
     .mult-base { display:flex; align-items:center; gap:6px; font-size:22px; font-weight:800; color:#fff; }
@@ -1165,7 +1180,7 @@
       filter: drop-shadow(0 4px 5px rgba(0,0,0,.45)); }
     /* スティール結果の受け取りボタンは枠内に収める */
     .steal-summary .big-btn { font-size: 17px; padding: 12px 24px; margin: 10px auto 2px; max-width: 100%; }
-    .big-btn:active:not(:disabled) { transform: translateY(4px); filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+    .big-btn:active:not(:disabled) { transform: translateY(4px); filter: brightness(.93) drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
     .gold-btn  { background-image: url("assets/images/Btn_Gold.png")  !important; }
     .green-btn { background-image: url("assets/images/Btn_Green.png") !important; }
     .red-btn   { background-image: url("assets/images/Btn_Red.png")   !important; }
@@ -1246,6 +1261,10 @@
     .green-btn:active:not(:disabled), .free-roll-btn:active, .tier-btn.ready:active { background-image: url("assets/images/Btn_Green_Press.png") !important; }
     .red-btn:active:not(:disabled)   { background-image: url("assets/images/Btn_Red_Press.png")   !important; }
     .nav-btn:active { background-image: url("assets/images/Btn_Nav_Press.png") !important; }
+    /* 大ボタンはプレス画像とアスペクト比が異なり押下時に見かけの大きさが変わるため、通常画像を維持し translateY＋brightness で押下感を出す */
+    .big-btn.gold-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Gold.png")  !important; }
+    .big-btn.green-btn:active:not(:disabled) { background-image: url("assets/images/Btn_Green.png") !important; }
+    .big-btn.red-btn:active:not(:disabled)   { background-image: url("assets/images/Btn_Red.png")   !important; }
   </style>
 </head>
 <body>

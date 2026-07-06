@@ -915,35 +915,6 @@ function ZorumeOverlay({ faceId, onComplete }) {
 }
 
 /* ============================================================
-   TRANSITION — ぞろ目(アタック/スティール)からミニゲームへの全画面ワイプ
-   中盤フレームで画面を完全に覆い、その瞬間に onMid で画面遷移して切替を隠す。
-   ============================================================ */
-function TransitionOverlay({ type, onMid, onDone }) {
-  const N = 12;
-  const [f, setF] = useState(0);
-  const midDone = useRef(false), doneRef = useRef(false);
-  useEffect(() => {
-    (type === 'attack' ? SFX.attack : SFX.steal)();
-    let i = 0;
-    const t = setInterval(() => {
-      i++;
-      if (i === Math.floor(N/2) && !midDone.current) { midDone.current = true; onMid && onMid(); }  // 画面が覆われた瞬間に遷移
-      if (i > N-1) { clearInterval(t); if(!doneRef.current){ doneRef.current=true; onDone && onDone(); } return; }
-      setF(i);
-    }, 100);
-    return () => clearInterval(t);
-  }, []);
-  const name = type==='attack' ? 'Trans_Attack' : 'Trans_Steal';
-  return (
-    <div className="screen-transition">
-      {Array.from({length:N}).map((_,n)=>(
-        <Img key={n} src={IMG+name+'_'+(n+1)+'.png'} className={"st-frame"+(n===f?' on':'')} fallback={null} />
-      ))}
-    </div>
-  );
-}
-
-/* ============================================================
    SCREEN 03 — BONUS ROLL（金色の3Dダイス1個。メインと同じ跳ね上げ→転がり→着地）
    ============================================================ */
 const BONUS_SLOTS = ['front','top','right','left','bottom','back'];
@@ -1200,7 +1171,7 @@ function AttackResult({ result, onNext, opponentName }) {
 /* ============================================================
    SCREEN 06 — STEAL
    ============================================================ */
-function StealScreen({ opponentName, opponentCoins=0, betMult=1, onReceive, stealMult=1, autoLastSpot=false, stage=3, pieceBonus=0, ownedPieces={} }) {
+function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1, onReceive, stealMult=1, autoLastSpot=false, stage=3, pieceBonus=0, ownedPieces={} }) {
   // 相手の村（建設画面と同じ配置）を表示し、建物を直接タップして盗む。
   const [village] = useState(() => themedVillage(stage, { levels:{ castle:3, storehouse:2, statue:2, garden:1 } }));
   const [phase, setPhase] = useState('intro'); // intro → selecting → summary
@@ -1245,8 +1216,13 @@ function StealScreen({ opponentName, opponentCoins=0, betMult=1, onReceive, stea
     <div className="screen steal-screen" style={{ backgroundImage:`url("${IMG}BG_Steal.png")` }}>
       {phase==='intro' && <Img src={IMG+'Effect_Smoke.png'} className="steal-smoke" fallback={<div className="steal-smoke-fallback" />} />}
       <div className="mini-bar">
-        <span className="ghost-label">🥷 {opponentName}に潜入</span>
-        <span className="foe-coins"><Img src={IMG+'Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponentCoins)}</span>
+        <div className="steal-foe">
+          <div className="steal-foe-face"><Img key={opponentImg} src={opponentImg} className="sff-img" fallback={<span className="sff-emoji">👺</span>} /></div>
+          <div className="steal-foe-info">
+            <span className="steal-foe-name">🥷 {opponentName}</span>
+            <span className="steal-foe-coins"><Img src={IMG+'Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponentCoins)}</span>
+          </div>
+        </div>
         <button className="ghost-btn danger" onClick={()=>onReceive(0)}>逃げる</button>
       </div>
 
@@ -2030,7 +2006,7 @@ function JackpotTile({ item, win }) {
   );
 }
 
-function MultiplierOverlay({ base, result, summon=null, pool, betMult=1, onDone }) {
+function MultiplierOverlay({ base, result, summon=null, boxReward=null, pool, betMult=1, onDone }) {
   // ジャックポットは6種の報酬から抽選。当選(result)は確定済み。
   // どの報酬が並ぶか見えるよう「縦スロットリール」で高速回転→減速→当選タイルを中央の当たりラインに停止。
   const items = (pool && pool.length) ? pool : [result];
@@ -2095,6 +2071,16 @@ function MultiplierOverlay({ base, result, summon=null, pool, betMult=1, onDone 
           {summon && <div className={"jp-summon " + summon.char.rank}>
             <Img src={charThumb(summon.char.id)} className="jp-summon-ico" fallback={<span style={{fontSize:30}}>🥷</span>} />
             <span className="jp-summon-txt">仲間召喚！ <b>{summon.char.name}</b><br/>かけら +{summon.amount}</span>
+          </div>}
+          {boxReward && <div className="jp-boxreward">
+            <div className="jp-box-head"><Img src={IMG+'TreasureBox_Open.png'} className="jp-box-ico" fallback={<span>🎁</span>} />宝箱の中身</div>
+            <div className={"jp-box-tile " + boxReward.type}>
+              {boxReward.type==='card'
+                ? <><Img src={boxReward.card.img} className="jp-box-img" fallback={<span style={{fontSize:28}}>🎴</span>} />
+                    <span className="jp-box-cap">{boxReward.card.gold?'★':''}カード</span></>
+                : <><Img src={charThumb(boxReward.char.id)} className="jp-box-img" fallback={<span style={{fontSize:28}}>🥷</span>} />
+                    <span className="jp-box-cap">{boxReward.char.name}<br/>かけら +{boxReward.amount}</span></>}
+            </div>
           </div>}
           <div className="mult-tap">タップで受け取る</div>
         </>}
@@ -2164,7 +2150,6 @@ function App() {
   const [screen, setScreen] = useState(initScreen);
   const [flow, setFlow] = useState(initFlow);
   const [zorumeFace, setZorumeFace] = useState(null);
-  const [trans, setTrans] = useState(null);   // {type,dest,data} 全画面トランジション
   const [multFx, setMultFx] = useState(null);   // {base, mult} ジャックポット等の倍率演出
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
   const [toast, setToast] = useState('');
@@ -2412,13 +2397,16 @@ function App() {
     if (f === 'coin') {
       go('bonus', { trigger:'coin' });                          // 小判ゾロ目のみボーナスルーレット
     } else if (f === 'attack') {
-      setTrans({ type:'attack', dest:'attackSelect', data:{ bonusResult: rollBonusDice('attack') } });   // Attackはトランジション経由でミニゲーム直行
+      go('attackSelect', { bonusResult: rollBonusDice('attack') });   // Attackはミニゲーム直行
     } else if (f === 'steal') {
-      setTrans({ type:'steal', dest:'steal', data:{} });   // Stealはトランジション経由でミニゲーム直行
+      go('steal', {});   // Stealはミニゲーム直行
     } else if (f === 'jackpot') {
       const res = rollBonusDice('jackpot');   // Jackpotは報酬スロット演出（どの報酬かを見せる）
       const summon = res.companion ? rollCompanionSummon() : null;   // 仲間召喚：どの仲間のかけらを何枚もらえるか事前確定
-      setMultFx({ base: coinBaseForStage(stage), result: res, summon });
+      // 宝箱面（お宝箱/大当たり/レア確定）は箱の中身（カード or 仲間のかけら）も必ず付与。以前はコインに畳み込むだけで「何も出ない」ように見えていた。
+      // レア確定はGOLDカード率を高める。超JPは仲間召喚が主報酬なので箱は付けない。
+      const boxReward = (res.treasure && !res.companion) ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
+      setMultFx({ base: coinBaseForStage(stage), result: res, summon, boxReward });
     } else { go('main'); }
   }, [zorumeFace, go, stage]);
 
@@ -2470,13 +2458,13 @@ function App() {
   return (
     <div className="app">
       {screen==='main' && <MainRoll game={game} addCoins={addCoins} grantShields={grantShields} grantRolls={grantRolls} showToast={showToast} go={go} onZorume={onZorume} onCardDrop={onCardDrop} dropCard={dropCardSilent} onShop={()=>go('shop')} tickets={tickets} bet={bet} setBet={setBet} night={night} onToggleNight={()=>setNight(n=>!n)} auto={auto} setAuto={setAuto} rollAnim={rollAnim} onToggleRollAnim={toggleRollAnim}
-        paused={!!multFx || shieldFx || !!zorumeFace || !!trans} equipped={equippedChar}
+        paused={!!multFx || shieldFx || !!zorumeFace} equipped={equippedChar}
         freeRollChance={eff.freeRollChance} cardDropBonus={eff.cardDropBonus}
         onResetShop={debugResetShop} onRerollShop={debugRerollShop} />}
       {screen==='bonus' && <BonusRoll trigger={flow.trigger} stage={stage} bet={bet} onComplete={onBonusComplete} />}
       {screen==='attackSelect' && <AttackSelect opponent={opponent} bonusResult={flow.bonusResult} stage={stage} ignoreShield={eff.ignoreShield} onCancel={()=>go('main')} onResolve={onAttackResolve} />}
       {screen==='attackResult' && <AttackResult result={flow.attackResult} onNext={onAttackNext} opponentName={opponent.name} />}
-      {screen==='steal' && <StealScreen opponentName={opponent.name} opponentCoins={opponent.coins} betMult={bet} onReceive={onStealReceive} stealMult={eff.stealMult} autoLastSpot={eff.stealLastSpot} stage={stage} pieceBonus={eff.pieceBonus} ownedPieces={ownedCharPieces} />}
+      {screen==='steal' && <StealScreen opponentName={opponent.name} opponentCoins={opponent.coins} opponentImg={opponent.img} betMult={bet} onReceive={onStealReceive} stealMult={eff.stealMult} autoLastSpot={eff.stealLastSpot} stage={stage} pieceBonus={eff.pieceBonus} ownedPieces={ownedCharPieces} />}
       {screen==='castle' && <CastleScreen game={game} spendCoins={spendCoins} grantRolls={grantRolls} showToast={showToast} onBack={()=>go('main')} onNextStage={nextStage} village={castleVillage} setVillage={setCastleVillage} buildDiscount={eff.buildDiscount} headStart={eff.headStartLevels} />}
       {screen==='collection' && <CollectionScreen owned={ownedCards} claimed={claimedSets} onClaim={claimSet} onBack={()=>go('main')} showToast={showToast} />}
       {screen==='characters' && <CharactersScreen ownedPieces={ownedCharPieces} equipped={equippedChar} onEquip={equipChar} onBack={()=>go('main')} stage={stage} />}
@@ -2509,10 +2497,10 @@ function App() {
         </div>}
 
       {zorumeFace && <ZorumeOverlay faceId={zorumeFace} onComplete={onZorumeComplete} />}
-      {trans && <TransitionOverlay type={trans.type} onMid={()=>go(trans.dest, trans.data)} onDone={()=>setTrans(null)} />}
-      {multFx && <MultiplierOverlay base={multFx.base} result={multFx.result} summon={multFx.summon} pool={BONUS_DICE_TABLES.jackpot} betMult={bet}
-        onDone={(total)=>{ const summon = multFx.summon; setMultFx(null); const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus)); addCoins(g); showToast(`ジャックポット！ +${fmt(g)} 🪙`);
-          if (summon) setTimeout(()=>{ addPiecesTo(summon.char.id, summon.amount); const stageNote = summon.char.unlockStage > stage ? `（ステージ${summon.char.unlockStage}で解放）` : ''; showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}${stageNote}`); }, 450); }} />}
+      {multFx && <MultiplierOverlay base={multFx.base} result={multFx.result} summon={multFx.summon} boxReward={multFx.boxReward} pool={BONUS_DICE_TABLES.jackpot} betMult={bet}
+        onDone={(total)=>{ const summon = multFx.summon; const boxReward = multFx.boxReward; setMultFx(null); const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus)); addCoins(g); showToast(`ジャックポット！ +${fmt(g)} 🪙`);
+          if (summon) setTimeout(()=>{ addPiecesTo(summon.char.id, summon.amount); const stageNote = summon.char.unlockStage > stage ? `（ステージ${summon.char.unlockStage}で解放）` : ''; showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}${stageNote}`); }, 450);
+          if (boxReward) setTimeout(()=>{ grantStealRewards([boxReward]); showToast(boxReward.type==='card' ? `🎁 宝箱：${boxReward.card.gold?'★GOLD ':''}カード獲得！` : `🎁 宝箱：${boxReward.char.name}のかけら +${boxReward.amount}`); }, 700); }} />}
       {shieldFx && <ShieldOverlay onDone={()=>{ setShieldFx(false); grantShields(3); showToast('シールド 満タン！ 🛡️'); }} />}
       <Toast msg={toast} />
     </div>
