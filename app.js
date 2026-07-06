@@ -2624,8 +2624,6 @@ function StealScreen({
     sub: `${'●'.repeat(Math.min(picks.length, 3))}${'○'.repeat(picksLeft)}`,
     className: "steal-title"
   }), /*#__PURE__*/React.createElement("div", {
-    className: "asym-note steal"
-  }, "🥷 忍びの強奪はシールドで防げない（確実に奪う）"), /*#__PURE__*/React.createElement("div", {
     className: "castle-stage village"
   }, village.map(it => {
     const p = picks.find(x => x.id === it.id);
@@ -5350,6 +5348,8 @@ function LoadingScreen({
       done = true;
       setTimeout(onDone, Math.max(300, 1100 - (Date.now() - t0)));
     };
+    // 全アセットのロードが完了する（=100%）までローディング画面を抜けない。
+    // 各画像は onload / onerror のどちらかが必ず発火するため loaded は必ず list.length に到達する。
     const bump = () => {
       loaded++;
       setPct(Math.round(loaded / list.length * 100));
@@ -5362,7 +5362,8 @@ function LoadingScreen({
       img.src = src;
       return img;
     });
-    const safety = setTimeout(finish, 12000); // 詰まっても最大12秒で進む
+    // 応答が返らず固まった接続に備えた最終手段のみ（通常は発火しない・十分長め）。
+    const safety = setTimeout(finish, 90000);
     return () => clearTimeout(safety);
   }, []);
   return /*#__PURE__*/React.createElement("div", {

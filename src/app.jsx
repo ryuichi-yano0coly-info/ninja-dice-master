@@ -1227,7 +1227,6 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
       </div>
 
       <ScrollBanner title="盗む建物をタップ！" sub={`${'●'.repeat(Math.min(picks.length,3))}${'○'.repeat(picksLeft)}`} className="steal-title" />
-      <div className="asym-note steal">🥷 忍びの強奪はシールドで防げない（確実に奪う）</div>
 
       {/* 相手の村：建物を直接タップして盗む */}
       <div className="castle-stage village">
@@ -2520,9 +2519,12 @@ function LoadingScreen({ onDone }) {
     const t0 = Date.now();
     // 100%到達後も含め、最低でも約1.1秒はスプラッシュを見せる（一瞬で消えるチラつき防止）
     const finish = () => { if (done) return; done = true; setTimeout(onDone, Math.max(300, 1100 - (Date.now() - t0))); };
+    // 全アセットのロードが完了する（=100%）までローディング画面を抜けない。
+    // 各画像は onload / onerror のどちらかが必ず発火するため loaded は必ず list.length に到達する。
     const bump = () => { loaded++; setPct(Math.round(loaded / list.length * 100)); if (loaded >= list.length) finish(); };
     imgsRef.current = list.map(src => { const img = new Image(); img.onload = bump; img.onerror = bump; img.src = src; return img; });
-    const safety = setTimeout(finish, 12000); // 詰まっても最大12秒で進む
+    // 応答が返らず固まった接続に備えた最終手段のみ（通常は発火しない・十分長め）。
+    const safety = setTimeout(finish, 90000);
     return () => clearTimeout(safety);
   }, []);
   return (

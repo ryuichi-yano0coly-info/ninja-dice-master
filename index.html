@@ -306,7 +306,8 @@
     .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
 
     /* ---------- ENERGY BAR ---------- */
-    .energy-wrap { position: relative; z-index: 5; padding: 6px 22px 2px; }
+    /* 左右サイドレール（幅58px＋左右5px＝内側端63px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
+    .energy-wrap { position: relative; z-index: 5; padding: 6px 70px 2px; }
     .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
     .energy-top b { color: var(--gold-light); font-size: 14px; }
     .energy-right { display: inline-flex; align-items: center; gap: 8px; }
