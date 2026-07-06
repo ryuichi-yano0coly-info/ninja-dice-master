@@ -1,0 +1,11 @@
+# Local Netlify folder
+.netlify
+
+# Dependencies
+node_modules
+
+# OS
+.DS_Store
+
+# Unprocessed source images (not needed to run the game)
+assets/raw

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Ninja Dice Master — 3Dロール実験</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    :root{ --navy:#111827; --gold:#D4A017; --gold-l:#F0C040; --red:#DC2626; }
+    html,body{ height:100%; background:#05070d; font-family:'Noto Sans JP',system-ui,-apple-system,sans-serif; overflow-x:hidden; }
+    #root{ min-height:100%; display:flex; justify-content:center; }
+    .app{ position:relative; width:100%; max-width:430px; min-height:100dvh; background:
+        radial-gradient(circle at 50% 30%, #1b2440 0%, #0b1020 55%, #05070d 100%);
+        display:flex; flex-direction:column; align-items:center; overflow:hidden; }
+
+    .topnote{ width:100%; text-align:center; padding:14px 16px 6px; color:#e5e7eb; }
+    .topnote .title{ font-size:20px; font-weight:900; color:var(--gold-l);
+      text-shadow:0 2px 6px #000, 0 0 14px rgba(240,192,64,.4); letter-spacing:1px; }
+    .topnote .sub{ font-size:12px; color:#9ca3af; margin-top:4px; line-height:1.6; }
+    .topnote .badge{ display:inline-block; margin-top:8px; font-size:11px; font-weight:800; color:#0b1020;
+      background:linear-gradient(180deg,#F0C040,#D4A017); padding:3px 12px; border-radius:999px; }
+
+    /* ---- 3D scene ---- */
+    .stage{ flex:1; width:100%; display:flex; align-items:center; justify-content:center; gap:24px;
+      perspective:1100px; perspective-origin:50% 42%; padding:20px 0; min-height:360px; }
+    .die-slot{ display:flex; flex-direction:column; align-items:center; }
+    /* 上に跳ねる発射（回転とは別レイヤーで縦移動） */
+    .launch{ transform-style:preserve-3d; will-change:transform; }
+    .launch.go{ animation:launch3d 2s linear both; }
+    /* 重力の放物線：上昇→頂点→落下（第1接地）→減衰バウンド2回。滞空させない。 */
+    @keyframes launch3d{
+      0%  { transform:translateY(0);      animation-timing-function:cubic-bezier(.2,.55,.5,1); }   /* 打ち上げ（減速して頂点へ） */
+      33% { transform:translateY(-165px); animation-timing-function:cubic-bezier(.55,0,.85,.5); }   /* 頂点→加速して落下 */
+      62% { transform:translateY(0);      animation-timing-function:cubic-bezier(.3,.5,.5,1); }     /* 第1接地 */
+      75% { transform:translateY(-36px);  animation-timing-function:cubic-bezier(.55,0,.85,.5); }   /* バウンド1 */
+      86% { transform:translateY(0);      animation-timing-function:cubic-bezier(.3,.5,.5,1); }
+      93% { transform:translateY(-11px); }                                                          /* バウンド2 */
+      100%{ transform:translateY(0); }
+    }
+    /* 3D回転：空中は等速でぐるぐる → 着地の瞬間に一気に減速して止まる */
+    .cube.spin3d{ animation:tumble3d 2s both; }
+    @keyframes tumble3d{
+      0%  { transform:rotateX(var(--rx0)) rotateY(var(--ry0)); animation-timing-function:linear; }        /* 空中：等速 */
+      60% { transform:rotateX(var(--rxA)) rotateY(var(--ryA)); animation-timing-function:cubic-bezier(.15,.85,.3,1); } /* 着地直前まで等速 */
+      100%{ transform:rotateX(var(--rxE)) rotateY(var(--ryE)); }                                          /* 着地衝撃で停止 */
+    }
+    .tilt{ transform-style:preserve-3d; transform:rotateX(-16deg) rotateY(-12deg); }
+
+    :root{ --sz:104px; --half:52px; }
+    .cube{ position:relative; width:var(--sz); height:var(--sz); transform-style:preserve-3d;
+      transform:rotateX(-20deg) rotateY(24deg); will-change:transform; }
+    .cube.rolling{ }
+    .face{ position:absolute; inset:0; display:grid; place-items:center;
+      background:linear-gradient(155deg,#fbf7ea,#efe6cf 62%,#e2d4b0);
+      border:3px solid var(--gold); border-radius:16px;
+      box-shadow:inset 0 0 0 2px rgba(255,255,255,.55), inset 0 -8px 14px rgba(150,120,40,.25);
+      backface-visibility:hidden; }
+    .face img{ width:64%; height:64%; object-fit:contain; filter:drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+    .face .emo{ font-size:46px; }
+    /* face placement */
+    .f-front { transform:translateZ(var(--half)); }
+    .f-back  { transform:rotateY(180deg) translateZ(var(--half)); }
+    .f-right { transform:rotateY(90deg)  translateZ(var(--half)); }
+    .f-left  { transform:rotateY(-90deg) translateZ(var(--half)); }
+    .f-top   { transform:rotateX(90deg)  translateZ(var(--half)); }
+    .f-bottom{ transform:rotateX(-90deg) translateZ(var(--half)); }
+    /* subtle face-to-face shading for solidity */
+    .f-right, .f-left { filter:brightness(.9); }
+    .f-bottom { filter:brightness(.8); }
+    .f-top { filter:brightness(1.06); }
+
+    .shadow{ width:88px; height:20px; margin-top:16px; border-radius:50%;
+      background:radial-gradient(ellipse at center, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
+      transition:transform .3s ease, opacity .3s ease; }
+
+    .result{ min-height:26px; margin:2px 0 4px; font-size:15px; font-weight:800; color:#fde68a; text-align:center; }
+    .result .r-hint{ color:#9ca3af; font-weight:700; font-size:12px; }
+
+    /* ---- roll button (game style) ---- */
+    .roll-zone{ padding:6px 0 30px; display:flex; flex-direction:column; align-items:center; }
+    .roll-btn{ width:120px; height:120px; border:none; background:transparent; cursor:pointer;
+      filter:drop-shadow(0 6px 8px rgba(0,0,0,.5)); transition:transform .08s; }
+    .roll-btn img{ width:100%; height:100%; object-fit:contain; }
+    .roll-btn:active:not(:disabled){ transform:translateY(5px); }
+    .roll-btn:disabled{ filter:grayscale(.5) brightness(.7); cursor:default; }
+    .roll-cap{ position:absolute; inset:0; display:grid; place-items:center; color:#fff; font-weight:900;
+      font-size:26px; text-shadow:0 2px 3px rgba(0,0,0,.5); pointer-events:none; }
+    .roll-wrap{ position:relative; width:120px; height:120px; }
+    .roll-sub{ margin-top:10px; font-size:11px; color:#cbd5e1; font-weight:700; }
+
+    .foot{ font-size:10.5px; color:#6b7280; text-align:center; padding:0 16px 14px; }
+    .foot a{ color:#9ca3af; }
+  </style>
+</head>
+<body>
+  <div id="root"><div class="app">
+    <div class="topnote">
+      <div class="title">🎲 3Dロール 実験</div>
+      <div class="sub">本物の立方体（CSS 3D）が転がって減速。<br>終盤にどの面が上になるか<b style="color:#fde68a">予想できる</b>のが狙いです。</div>
+      <div class="badge">PROTOTYPE — ロールのみ3D化</div>
+    </div>
+
+    <div class="stage" id="stage"></div>
+
+    <div class="result" id="result"><span class="r-hint">「振る！」でロール開始</span></div>
+
+    <div class="roll-zone">
+      <div class="roll-wrap">
+        <button class="roll-btn" id="rollBtn" title="振る">
+          <img src="assets/images/Btn_Roll.png" alt="roll"
+               onerror="this.style.display='none'" />
+        </button>
+        <div class="roll-cap">振る！</div>
+      </div>
+      <div class="roll-sub">タップでロール</div>
+    </div>
+
+    <div class="foot">通常版（フラット2Dロール）は <a href="index.html">index.html</a>。これは 3D 版の試作です。</div>
+  </div></div>
+
+  <script>
+    const IMG = 'assets/images/';
+    // 6面: スロット名 → 記号。コインはweight2相当で2面。
+    const FACES = [
+      { slot:'front',  name:'コイン',       emo:'🪙', img:'DiceFace_Coin.png'   },
+      { slot:'top',    name:'アタック',     emo:'⚔️', img:'DiceFace_Attack.png' },
+      { slot:'right',  name:'スティール',   emo:'🥷', img:'DiceFace_Steal.png'  },
+      { slot:'left',   name:'シールド',     emo:'🛡️', img:'DiceFace_Shield.png' },
+      { slot:'bottom', name:'ジャックポット', emo:'⭐', img:'DiceFace_Jackpot.png'},
+      { slot:'back',   name:'コイン',       emo:'🪙', img:'DiceFace_Coin.png'   },
+    ];
+    // その面を「正面」に持ってくる立方体の回転（度）
+    const REST = {
+      front:  { x:0,   y:0   },
+      back:   { x:0,   y:180 },
+      right:  { x:0,   y:-90 },
+      left:   { x:0,   y:90  },
+      top:    { x:-90, y:0   },
+      bottom: { x:90,  y:0   },
+    };
+    const CLASS = { front:'f-front', back:'f-back', right:'f-right', left:'f-left', top:'f-top', bottom:'f-bottom' };
+
+    const stage = document.getElementById('stage');
+    const dice = [];
+
+    function buildDie(){
+      const slotEl = document.createElement('div'); slotEl.className='die-slot';
+      const tilt = document.createElement('div'); tilt.className='tilt';
+      const cube = document.createElement('div'); cube.className='cube';
+      FACES.forEach(f => {
+        const face = document.createElement('div'); face.className = 'face '+CLASS[f.slot];
+        const img = document.createElement('img'); img.src = IMG+f.img; img.alt=f.name;
+        img.onerror = () => { face.innerHTML = '<span class="emo">'+f.emo+'</span>'; };
+        face.appendChild(img);
+        cube.appendChild(face);
+      });
+      tilt.appendChild(cube);
+      const launch = document.createElement('div'); launch.className='launch';
+      launch.appendChild(tilt);
+      const shadow = document.createElement('div'); shadow.className='shadow';
+      slotEl.appendChild(launch); slotEl.appendChild(shadow);
+      stage.appendChild(slotEl);
+      return { cube, launch, shadow, rx:-20, ry:24 };  // 現在の累積回転を保持
+    }
+    for (let i=0;i<3;i++) dice.push(buildDie());
+
+    const norm = a => ((a % 360) + 360) % 360;
+
+    // die を指定スロットへ、前進方向に spins 回転させて着地
+    function rollDie(die, slot, spinsX, spinsY, dur){
+      const rest = REST[slot];
+      const addX = norm(rest.x - die.rx) + spinsX*360;
+      const addY = norm(rest.y - die.ry) + spinsY*360;
+      const rx0 = die.rx, ry0 = die.ry;
+      const rxE = rx0 + addX, ryE = ry0 + addY;
+      // 60%(=着地直前)までにほぼ回し切る → 残りは着地衝撃で一気に停止（空中では減速しない）
+      const rxA = rx0 + 0.84*addX, ryA = ry0 + 0.84*addY;
+      die.rx = rxE; die.ry = ryE;
+      const c = die.cube;
+      c.style.setProperty('--rx0', rx0+'deg'); c.style.setProperty('--ry0', ry0+'deg');
+      c.style.setProperty('--rxA', rxA+'deg'); c.style.setProperty('--ryA', ryA+'deg');
+      c.style.setProperty('--rxE', rxE+'deg'); c.style.setProperty('--ryE', ryE+'deg');
+      c.style.animationDuration = dur+'s';
+      c.classList.remove('spin3d'); void c.offsetWidth; c.classList.add('spin3d');
+      // 上へ跳ねる発射アニメ（回転と同じ長さ）
+      die.launch.style.animationDuration = dur+'s';
+      die.launch.classList.remove('go'); void die.launch.offsetWidth; die.launch.classList.add('go');
+      // 影：空中は小さく薄く → 着地で戻す
+      die.shadow.style.transform='scale(.62)'; die.shadow.style.opacity='.35';
+      setTimeout(()=>{ die.shadow.style.transform='scale(1)'; die.shadow.style.opacity='1'; }, dur*0.6*1000);
+    }
+
+    const btn = document.getElementById('rollBtn');
+    const resultEl = document.getElementById('result');
+    let rolling = false;
+
+    function roll(){
+      if (rolling) return; rolling = true;
+      btn.disabled = true;
+      resultEl.innerHTML = '<span class="r-hint">…減速中、どの面が上に？</span>';
+      const picks = [];
+      const durs = [2.0, 2.2, 2.4];          // ダイスごとに着地タイミングをずらす
+      const STAGGER = 220;                    // 左から順番に連続で発射する間隔
+      dice.forEach((die,i) => {
+        const f = FACES[Math.floor(Math.random()*FACES.length)];
+        picks.push(f);
+        const spinsX = 2 + Math.floor(Math.random()*3);   // 2〜4回転
+        const spinsY = 3 + Math.floor(Math.random()*3);   // 3〜5回転
+        setTimeout(() => rollDie(die, f.slot, spinsX, spinsY, durs[i]), i*STAGGER); // 左→右に発射
+      });
+      const maxEnd = (dice.length-1)*STAGGER + Math.max(...durs)*1000;
+      setTimeout(()=>{
+        resultEl.innerHTML = '結果：' + picks.map(p=>p.name).join(' / ');
+        btn.disabled = false; rolling = false;
+      }, maxEnd + 150);
+    }
+    btn.addEventListener('click', roll);
+    // クリック領域を広げる（キャップ文字の上からも押せるように）
+    document.querySelector('.roll-cap').addEventListener('click', roll);
+  </script>
+</body>
+</html>

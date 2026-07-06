@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Ninja Dice Master</title>
+
+  <!-- Fonts (optional, falls back to system-ui offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --navy: #111827;
+      --navy-2: #1f2a44;
+      --gold: #D4A017;
+      --gold-light: #F0C040;
+      --red: #DC2626;
+      --red-dark: #991B1B;
+      --sakura: #F9A8D4;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      height: 100%;
+      background: #05070d;
+      font-family: 'Noto Sans JP', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+
+    #root { height: 100%; display: flex; justify-content: center; align-items: stretch; }
+
+    .app {
+      position: relative;
+      width: 100%;
+      max-width: 430px;
+      height: 100dvh;
+      overflow: hidden;
+      background: var(--navy);
+      box-shadow: 0 0 60px rgba(0,0,0,.6);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ---------- LOADING / SPLASH ---------- */
+    .loading-screen { position:absolute; inset:0; z-index:10000; background-size:cover; background-position:center;
+      display:flex; flex-direction:column; align-items:center; overflow:hidden; }
+    .load-dim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(5,7,13,.55) 0%, rgba(5,7,13,.1) 34%, rgba(5,7,13,.2) 66%, rgba(5,7,13,.88) 100%); }
+    .load-title { position:relative; z-index:2; margin-top:54px; text-align:center; font-size:46px; font-weight:900; line-height:1.02;
+      color:#fff; letter-spacing:2px; text-shadow:0 0 1px #D4A017, 0 3px 0 #7c5a06, 0 0 24px rgba(240,192,64,.75), 0 6px 14px rgba(0,0,0,.7); }
+    .load-title .lt-2 { font-size:30px; color:#F0C040; }
+    .load-sub { position:relative; z-index:2; margin-top:10px; font-size:15px; font-weight:800; color:#fde68a; letter-spacing:3px; text-shadow:0 2px 6px #000; }
+    .load-bottom { position:absolute; z-index:2; left:0; right:0; bottom:66px; display:flex; flex-direction:column; align-items:center; gap:10px; padding:0 40px; }
+    .load-bar { width:100%; max-width:320px; height:16px; background:rgba(0,0,0,.55); border:2px solid rgba(212,160,23,.7);
+      border-radius:999px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+    .load-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#D4A017,#F0C040);
+      box-shadow:0 0 10px rgba(240,192,64,.8); transition:width .2s ease; }
+    .load-pct { font-size:12.5px; font-weight:700; color:#e5e7eb; letter-spacing:1px; text-shadow:0 1px 3px #000; }
+
+    /* Background layer */
+    .bg-layer {
+      position: absolute; inset: 0;
+      background-image: var(--bg);
+      background-size: cover;
+      background-position: top center;
+      z-index: 0;
+    }
+    .bg-layer::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, rgba(17,24,39,0) 45%, rgba(17,24,39,.55) 70%, rgba(17,24,39,.95) 100%);
+    }
+
+    /* Ambient background animation: 常時ループの桜吹雪 */
+    .ambient-layer { position:absolute; inset:0; z-index:1; pointer-events:none; overflow:hidden; }
+    .petal { position:absolute; top:-40px; will-change: transform; animation-name: petalFall; animation-timing-function: linear; animation-iteration-count: infinite; }
+    .petal-img, .petal-emoji { width:100%; height:100%; display:block; }
+    /* 縦方向の落下(dvh)と横方向の揺れ(drift比率+左右振動)を同一 transform 内で合成する。
+       複数 animation-name で同じプロパティ(transform)を扱うと後方が上書きしてしまうため必ず1本にまとめること。 */
+    @keyframes petalFall {
+      0%   { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+      8%   { opacity: .9; }
+      25%  { transform: translate3d(calc(var(--drift) * 0.3 + 8px), 25dvh, 0) rotate(calc(var(--spin) * 0.25)); }
+      50%  { transform: translate3d(calc(var(--drift) * 0.5 - 6px), 50dvh, 0) rotate(calc(var(--spin) * 0.5)); }
+      75%  { transform: translate3d(calc(var(--drift) * 0.8 + 4px), 75dvh, 0) rotate(calc(var(--spin) * 0.75)); }
+      90%  { opacity: .85; }
+      100% { transform: translate3d(var(--drift), 100dvh, 0) rotate(var(--spin)); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ambient-layer { display: none; }
+    }
+
+    /* Text helpers */
+    .gold-text {
+      color: #fff;
+      text-shadow:
+        0 0 1px var(--gold), 0 1px 0 var(--gold-light),
+        -1px -1px 0 #7c5a06, 1px -1px 0 #7c5a06,
+        -1px 1px 0 #7c5a06, 1px 1px 0 #7c5a06;
+    }
+
+    /* ---------- TOP BAR ---------- */
+    .topbar {
+      position: relative; z-index: 5;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      background: rgba(17,24,39,.85);
+      backdrop-filter: blur(6px);
+      border-bottom: 2px solid rgba(212,160,23,.4);
+    }
+    .coin-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(0,0,0,.35);
+      border: 1.5px solid var(--gold);
+      border-radius: 999px;
+      padding: 4px 6px 4px 4px;
+    }
+    .coin-pill img { width: 26px; height: 26px; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+    .coin-pill .coin-emoji { font-size: 20px; }
+    .coin-amount { font-weight: 900; font-size: 15px; letter-spacing: .3px; }
+    .plus-btn {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #16a34a; border: 1.5px solid #dcfce7; color: #fff;
+      font-weight: 900; font-size: 15px; line-height: 1; cursor: pointer;
+      display: grid; place-items: center; box-shadow: 0 2px 4px rgba(0,0,0,.4);
+    }
+    .shield-box {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(0,0,0,.3); border: 1.5px solid rgba(96,165,250,.6);
+      border-radius: 999px; padding: 4px 10px;
+    }
+    .shield-box .sh-ico { font-size: 17px; }
+    .shield-dots { display: flex; gap: 3px; }
+    .shield-dots i {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: #334155; border: 1px solid #64748b; display: block;
+    }
+    .shield-dots i.on { background: #60a5fa; border-color: #bfdbfe; box-shadow: 0 0 5px #60a5fa; }
+    .menu-btn {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: rgba(0,0,0,.3); border: 1.5px solid rgba(212,160,23,.5);
+      color: #fff; font-size: 18px; cursor: pointer; display: grid; place-items: center;
+    }
+
+    /* ---------- OPPONENT CARD ---------- */
+    .opp-card {
+      position: relative; z-index: 5;
+      margin: 10px 12px 0;
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      background: linear-gradient(180deg, rgba(31,42,68,.92), rgba(17,24,39,.92));
+      border: 2px solid var(--gold);
+      border-radius: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.4), inset 0 0 0 1px rgba(240,192,64,.25);
+    }
+    .opp-avatar {
+      width: 46px; height: 46px; border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #334155, #0f172a);
+      border: 2px solid var(--gold-light);
+      display: grid; place-items: center; font-size: 22px; flex-shrink: 0;
+      overflow: hidden;
+    }
+    .opp-avatar .opp-portrait {
+      width: 100%; height: 100%; object-fit: cover;
+      object-position: 50% 8%; transform: scale(1.55); transform-origin: 50% 0;
+    }
+    .opp-info { flex: 1; min-width: 0; }
+    .opp-label { font-size: 10px; color: var(--sakura); font-weight: 700; letter-spacing: 1px; }
+    .opp-name { font-size: 15px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .opp-coins { font-size: 13px; font-weight: 700; color: var(--gold-light); }
+
+    /* ---------- DICE AREA ---------- */
+    .dice-area {
+      position: relative; z-index: 4;
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px;
+      min-height: 0;
+    }
+    .dice-stage { position: relative; display: grid; place-items: center; }
+    .dice-row { position: relative; z-index: 1; display: flex; gap: 16px; align-items: center; justify-content: center; }
+    /* coin burst BEHIND the dice */
+    .dice-coin-burst { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 300px; height: 300px; object-fit: contain; opacity: 0; z-index: 0; pointer-events: none; }
+    .dice-coin-burst.on { animation: burstAnim .8s ease-out; }
+    .die {
+      position: relative;
+      width: 96px; height: 96px;
+      display: grid; place-items: center;
+      filter: drop-shadow(0 8px 10px rgba(0,0,0,.55));
+      transform-origin: center;
+    }
+    .die .die-body { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    .die .die-face {
+      position: absolute; width: 50%; height: 50%;
+      left: 50%; top: 46%; transform: translate(-50%,-50%);
+      object-fit: contain;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.4));
+    }
+    .die .face-emoji {
+      position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%);
+      font-size: 40px;
+    }
+    .die.spinning { animation: dieSpin .28s linear infinite; }
+    .die.landed { animation: dieLand .35s cubic-bezier(.2,1.4,.5,1); }
+    @keyframes dieSpin {
+      0%   { transform: rotate(0deg)   scale(1); }
+      50%  { transform: rotate(180deg) scale(1.08); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+    @keyframes dieLand {
+      0% { transform: scale(1.35) translateY(-8px); }
+      60% { transform: scale(.92); }
+      100% { transform: scale(1); }
+    }
+
+    /* --- ダイス演出「飛ばし」: 下から放り投げられ、上で回転→落ちて着地（.die.toss 適用時のみ／従来演出は保持） --- */
+    .die.toss.spinning { animation: diceToss .95s cubic-bezier(.28,.72,.35,1) forwards; }
+    .die.toss.landed   { animation: diceDrop .46s cubic-bezier(.22,1.5,.4,1); }
+    @keyframes diceToss {
+      0%   { transform: translateY(150%) scale(.6)  rotate(-40deg); opacity: 0; }
+      10%  { opacity: 1; }
+      30%  { transform: translateY(-52%) scale(1.22) rotate(240deg); }   /* 上に放られる（apex） */
+      45%  { transform: translateY(-40%) scale(1.1)  rotate(360deg); }   /* 空中でホバー */
+      100% { transform: translateY(-40%) scale(1.1)  rotate(1080deg); }  /* 停止まで回転し続ける */
+    }
+    @keyframes diceDrop {
+      0%   { transform: translateY(-40%) scale(1.12) rotate(-15deg); }   /* 空中から落下開始 */
+      50%  { transform: translateY(10%)  scale(.85)  rotate(8deg); }     /* 着地の潰れ */
+      72%  { transform: translateY(-6%)  scale(1.06) rotate(-3deg); }    /* 跳ね返り */
+      100% { transform: translateY(0)    scale(1)    rotate(0); }        /* 静止 */
+    }
+
+    /* ===== 3Dダイス（立方体）：小さめ・画面に収まるサイズ。空中は等速→着地で減速、左→右に発射 ===== */
+    .dice-row.d3 { gap: 44px; }
+    /* perspective は各スロットに置く（間の要素で3Dが潰れないように） */
+    .d3-slot { position: relative; perspective: 760px; perspective-origin: 50% 45%; }
+    .d3-slot.bonus { perspective: 1100px; }
+    /* ボーナスの大きい金ダイス用の大きめ跳ね上げ */
+    @keyframes d3launchBig {
+      0%  { transform: translateY(0);      animation-timing-function: cubic-bezier(.2,.55,.5,1); }
+      33% { transform: translateY(-104px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      62% { transform: translateY(0);      animation-timing-function: cubic-bezier(.3,.5,.5,1); }
+      75% { transform: translateY(-26px);  animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      86% { transform: translateY(0); }
+      93% { transform: translateY(-8px); }
+      100%{ transform: translateY(0); }
+    }
+    .d3-launch { transform-style: preserve-3d; }
+    .d3-tilt { transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(-12deg); }
+    .d3-cube { position: relative; width: 62px; height: 62px; transform-style: preserve-3d;
+      transform: rotateX(-20deg) rotateY(24deg); --d3half: 31px; }
+    .d3-cube.bonus { width: 120px; height: 120px; --d3half: 60px; }   /* ボーナスは大きめの金ダイス1個 */
+    .d3-face { position: absolute; inset: 0; display: grid; place-items: center;
+      background: linear-gradient(155deg,#fbf7ea,#efe6cf 62%,#e2d4b0);
+      border: 2px solid var(--gold); border-radius: 11px;
+      box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.55), inset 0 -5px 9px rgba(150,120,40,.25);
+      backface-visibility: hidden; }
+    .d3-face .d3-sym { width: 66%; height: 66%; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+    .d3-face .d3-emo { font-size: 28px; }
+    /* 金色の面＋倍率テキスト（ボーナスダイス） */
+    .d3-cube.bonus .d3-face { border-radius: 16px; border-color: #8a6413;
+      background: linear-gradient(155deg,#F8DE86,#E3AC3E 58%,#B9811C);
+      box-shadow: inset 0 0 0 2px rgba(255,248,220,.6), inset 0 -9px 16px rgba(120,85,10,.4); }
+    .d3-cube.bonus .bd3-label { font-size: 38px; font-weight: 900; color: #4a2c00; text-shadow: 0 1px 0 rgba(255,255,255,.45); }
+    .d3-cube .f-front { transform: translateZ(var(--d3half)); }
+    .d3-cube .f-back  { transform: rotateY(180deg) translateZ(var(--d3half)); }
+    .d3-cube .f-right { transform: rotateY(90deg)  translateZ(var(--d3half)); }
+    .d3-cube .f-left  { transform: rotateY(-90deg) translateZ(var(--d3half)); }
+    .d3-cube .f-top   { transform: rotateX(90deg)  translateZ(var(--d3half)); }
+    .d3-cube .f-bottom{ transform: rotateX(-90deg) translateZ(var(--d3half)); }
+    .d3-cube .f-right, .d3-cube .f-left { filter: brightness(.9); }
+    .d3-cube .f-bottom { filter: brightness(.82); }
+    .d3-cube .f-top { filter: brightness(1.05); }
+    /* 上に跳ねて落ちる（放物線＋減衰バウンド） */
+    @keyframes d3launch {
+      0%  { transform: translateY(0);     animation-timing-function: cubic-bezier(.2,.55,.5,1); }
+      33% { transform: translateY(-74px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      62% { transform: translateY(0);     animation-timing-function: cubic-bezier(.3,.5,.5,1); }
+      75% { transform: translateY(-17px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      86% { transform: translateY(0); }
+      93% { transform: translateY(-5px); }
+      100%{ transform: translateY(0); }
+    }
+    /* 空中は等速回転→着地の瞬間に一気に減速 */
+    @keyframes d3tumble {
+      0%  { transform: rotateX(var(--rx0)) rotateY(var(--ry0)); animation-timing-function: linear; }
+      60% { transform: rotateX(var(--rxA)) rotateY(var(--ryA)); animation-timing-function: cubic-bezier(.15,.85,.3,1); }
+      100%{ transform: rotateX(var(--rxE)) rotateY(var(--ryE)); }
+    }
+
+    .gain-banner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 18px;
+      background: rgba(0,0,0,.5);
+      border: 2px solid var(--gold);
+      border-radius: 999px;
+      font-weight: 900; font-size: 17px;
+      transition: transform .15s;
+    }
+    .gain-banner.pop { animation: gainPop .4s ease-out; }
+    @keyframes gainPop { 0%{ transform: scale(.6); } 55%{ transform: scale(1.18);} 100%{ transform: scale(1);} }
+    .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
+
+    /* ---------- ENERGY BAR ---------- */
+    .energy-wrap { position: relative; z-index: 5; padding: 6px 22px 2px; }
+    .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
+    .energy-top b { color: var(--gold-light); font-size: 14px; }
+    .energy-right { display: inline-flex; align-items: center; gap: 8px; }
+    .free-roll-btn { background: linear-gradient(180deg,#34d399,#059669); border: 1.5px solid #bbf7d0; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+    .free-roll-btn:active { transform: translateY(1px); }
+    .energy-track {
+      height: 12px; border-radius: 999px;
+      background: rgba(0,0,0,.5); border: 1.5px solid rgba(212,160,23,.5);
+      overflow: hidden;
+    }
+    .energy-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--gold), var(--gold-light));
+      box-shadow: 0 0 8px rgba(240,192,64,.7);
+      transition: width .4s ease;
+    }
+    .energy-timer { text-align: right; font-size: 10.5px; color: #9ca3af; margin-top: 3px; }
+
+    /* ---------- ROLL BUTTON ---------- */
+    .roll-zone { position: relative; z-index: 5; padding: 6px 0 20px; display: flex; flex-direction: column; align-items: center; }
+    .roll-btn {
+      position: relative;
+      width: 118px; height: 118px; border-radius: 50%;
+      border: 4px solid var(--gold-light);
+      background: radial-gradient(circle at 38% 32%, #f87171, var(--red) 55%, var(--red-dark));
+      color: #fff; font-weight: 900; font-size: 27px;
+      cursor: pointer;
+      box-shadow: 0 8px 0 var(--red-dark), 0 12px 20px rgba(0,0,0,.5), inset 0 0 0 4px rgba(255,255,255,.12);
+      transition: transform .08s, box-shadow .08s;
+      text-shadow: 0 2px 3px rgba(0,0,0,.4);
+      user-select: none;
+    }
+    .roll-btn:active:not(:disabled) { transform: translateY(6px); box-shadow: 0 2px 0 var(--red-dark), 0 4px 10px rgba(0,0,0,.5), inset 0 0 0 4px rgba(255,255,255,.12); }
+    .roll-btn:disabled { filter: grayscale(.6) brightness(.7); cursor: default; }
+    .roll-btn.charging { animation: chargePulse .6s ease-in-out infinite; }
+    @keyframes chargePulse { 0%,100%{ box-shadow: 0 8px 0 var(--red-dark), 0 0 0 0 rgba(240,192,64,.7);} 50%{ box-shadow: 0 8px 0 var(--red-dark), 0 0 0 14px rgba(240,192,64,0);} }
+    .roll-sub { margin-top: 9px; font-size: 11px; color: #cbd5e1; font-weight: 700; letter-spacing: .5px; }
+    .roll-sub.auto { color: var(--gold-light); }
+
+    /* ---------- CHARACTER ---------- */
+    .character {
+      position: absolute; z-index: 6;
+      left: 4px; bottom: 128px;
+      width: 108px; height: 108px;
+      pointer-events: none;
+    }
+    .character img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); transition: transform .2s; }
+    .character .speech {
+      position: absolute; top: -14px; left: 78px;
+      background: #fff; color: var(--navy);
+      font-size: 11px; font-weight: 900; white-space: nowrap;
+      padding: 4px 9px; border-radius: 10px;
+      border: 2px solid var(--gold);
+      opacity: 0; transform: scale(.7); transition: all .2s;
+    }
+    .character .speech.show { opacity: 1; transform: scale(1); }
+    .character .speech::after { content:""; position:absolute; left:-6px; bottom:8px; border:6px solid transparent; border-right-color:#fff; }
+    .character.excited img { animation: charBounce .4s ease infinite; }
+    .character.zorume img { animation: charSpin .6s ease infinite; }
+    @keyframes charBounce { 0%,100%{ transform: translateY(0) scale(1);} 50%{ transform: translateY(-10px) scale(1.05);} }
+    @keyframes charSpin { 0%{transform: rotate(-6deg) scale(1.05);} 50%{transform: rotate(6deg) scale(1.12);} 100%{transform: rotate(-6deg) scale(1.05);} }
+
+    /* ---------- EFFECT OVERLAY ---------- */
+    .fx-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+    .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+    .flash.on { animation: flashAnim .45s ease-out; }
+    @keyframes flashAnim { 0%{ opacity: 0;} 20%{ opacity: .9;} 100%{ opacity: 0;} }
+
+    .coin-burst {
+      position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%);
+      width: 320px; height: 320px; object-fit: contain; opacity: 0;
+    }
+    .coin-burst.on { animation: burstAnim .8s ease-out; }
+    @keyframes burstAnim { 0%{ opacity:0; transform: translate(-50%,-50%) scale(.3) rotate(-20deg);} 40%{ opacity:1;} 100%{ opacity:0; transform: translate(-50%,-50%) scale(1.25) rotate(10deg);} }
+
+    .jackpot-fx {
+      position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%);
+      width: 380px; height: 380px; object-fit: contain; opacity: 0;
+    }
+    .jackpot-fx.on { animation: jackAnim 1.2s ease-out; }
+    @keyframes jackAnim { 0%{opacity:0; transform: translate(-50%,-50%) scale(.2) rotate(0);} 30%{opacity:1;} 100%{opacity:0; transform: translate(-50%,-50%) scale(1.4) rotate(90deg);} }
+
+    /* Floating gain readout — rises above the burst so the amount is always legible */
+    .gain-float {
+      position: absolute; left: 50%; top: 30%;
+      display: flex; align-items: center; gap: 8px;
+      opacity: 0; white-space: nowrap;
+      filter: drop-shadow(0 3px 7px rgba(0,0,0,.9));
+      animation: gainFloat 1.5s cubic-bezier(.2,1,.3,1) forwards;
+    }
+    .gain-float .gf-num { font-size: 46px; font-weight: 900; letter-spacing: .5px; }
+    .gain-float .gf-coin { width: 38px; height: 38px; object-fit: contain; }
+    /* Pops up from the dice, then dwells in clear sky above the coin burst before fading */
+    @keyframes gainFloat {
+      0%   { opacity: 0; transform: translate(-50%, 44px)  scale(.5); }
+      18%  { opacity: 1; transform: translate(-50%, -18px) scale(1.2); }
+      34%  { transform: translate(-50%, -40px) scale(1); }
+      82%  { opacity: 1; transform: translate(-50%, -52px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -104px) scale(1); }
+    }
+
+    /* ?hold — freeze effects at their peak for design review / screenshots */
+    .fx-layer.hold .gain-float { animation: none; opacity: 1; transform: translate(-50%,-52px) scale(1); }
+    .fx-layer.hold .coin-burst { animation: none; opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    .fx-layer.hold .jackpot-fx { animation: none; opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    .fx-layer.hold .zorume-banner { animation: none; opacity: 1; transform: translate(-50%,-50%) scale(1); }
+
+    .zorume-banner {
+      position: absolute; left: 50%; top: 34%; transform: translate(-50%,-50%) scale(.4);
+      width: 340px; height: 128px;
+      display: grid; place-items: center;
+      opacity: 0;
+    }
+    .zorume-banner.on { animation: bannerAnim 1.6s cubic-bezier(.2,1.5,.4,1) forwards; }
+    @keyframes bannerAnim {
+      0%{ opacity:0; transform: translate(-50%,-50%) scale(.4) rotate(-8deg);}
+      15%{ opacity:1; transform: translate(-50%,-50%) scale(1.05) rotate(0);}
+      80%{ opacity:1; transform: translate(-50%,-50%) scale(1);}
+      100%{ opacity:0; transform: translate(-50%,-50%) scale(1.05);}
+    }
+    .zorume-banner .scroll-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    .zorume-banner .scroll-fallback {
+      position: absolute; inset: 0; border-radius: 16px;
+      background: linear-gradient(180deg,#fef3c7,#fde68a); border: 4px solid var(--red);
+    }
+    .zorume-banner .banner-text {
+      position: relative; z-index: 2;
+      font-size: 34px; font-weight: 900; color: var(--red);
+      text-shadow: 0 2px 0 #fff, 0 0 10px rgba(255,255,255,.6);
+      letter-spacing: 2px;
+    }
+
+    /* toast */
+    .toast {
+      position: absolute; z-index: 40; left: 50%; bottom: 22%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.82); color:#fff; border:1.5px solid var(--gold);
+      padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
+      opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+    /* ============ MULTI-SCREEN BASE ============ */
+    .screen {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      background-size: cover; background-position: center;
+    }
+    .gb-label { font-size: 13px; color: #e5e7eb; }
+    .opp-avatar { position: relative; }
+    .opp-avatar .opp-frame { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); object-fit: contain; }
+    .opp-avatar .opp-face { position: relative; z-index: 1; }
+
+    /* ---------- Scroll banner (shared) ---------- */
+    .scroll-banner { position: relative; z-index: 6; width: 300px; height: 96px; margin: 10px auto 4px; display: grid; place-items: center; }
+    .scroll-banner .scroll-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; filter: drop-shadow(0 4px 8px rgba(0,0,0,.45)); }
+    .scroll-bg-fallback { position: absolute; inset: 8px 0; border-radius: 12px; background: linear-gradient(180deg,#fef3c7,#fde68a); border: 3px solid var(--red); }
+    .scroll-banner .scroll-content { position: relative; z-index: 2; text-align: center; }
+    .scroll-title { font-size: 26px; font-weight: 900; letter-spacing: 1px; color: var(--red); }
+    .scroll-sub { font-size: 12px; font-weight: 700; color: #7c2d12; letter-spacing: 3px; }
+
+    /* ---------- Big buttons (shared) ---------- */
+    .big-btn {
+      display: block; margin: 12px auto; padding: 15px 26px; border-radius: 16px;
+      border: 3px solid rgba(255,255,255,.25); font-size: 19px; font-weight: 900; color: #fff;
+      cursor: pointer; box-shadow: 0 6px 0 rgba(0,0,0,.35), 0 8px 16px rgba(0,0,0,.4);
+      transition: transform .08s, box-shadow .08s; z-index: 6; position: relative; max-width: 88%;
+    }
+    .big-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.35); }
+    .gold-btn { background: linear-gradient(180deg,#F0C040,#D4A017); border-color:#fff6d5; color:#4a3400; text-shadow:0 1px 0 rgba(255,255,255,.4); }
+    .green-btn { background: linear-gradient(180deg,#34d399,#059669); border-color:#bbf7d0; }
+    .big-btn.small { font-size: 16px; padding: 12px 18px; margin: 8px auto; }
+    .big-btn.disabled, .big-btn:disabled { filter: grayscale(.6) brightness(.75); cursor: default; }
+    .big-btn.busy { animation: pulse .6s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.7;} }
+
+    /* ---------- mini top bar (shared) ---------- */
+    .mini-bar { position: relative; z-index: 6; display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; gap: 8px; }
+    .ghost-btn { background: rgba(0,0,0,.45); border: 1.5px solid rgba(255,255,255,.35); color:#fff; font-weight:700; font-size:13px; padding:6px 12px; border-radius:999px; cursor:pointer; }
+    .ghost-btn.danger { border-color: rgba(220,38,38,.7); color:#fca5a5; }
+    .ghost-label { background: rgba(0,0,0,.5); color:#fff; font-weight:700; font-size:13px; padding:6px 12px; border-radius:999px; }
+    /* 相手の所持金（スティール/アタック画面のミニバー） */
+    .foe-coins { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-size:13px; font-weight:900; color:#F0C040;
+      background:rgba(0,0,0,.5); border:1.5px solid rgba(240,192,64,.6); padding:5px 11px; border-radius:999px; }
+    .foe-coins .fc-ico { width:16px; height:16px; object-fit:contain; }
+
+    /* ============ SCREEN 02 — ZORUME OVERLAY ============ */
+    .screen-transition { position:absolute; inset:0; z-index:9999; pointer-events:none; overflow:hidden; }
+    .screen-transition .st-frame { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; }
+    .screen-transition .st-frame.on { opacity:1; }
+    .zorume-overlay { position: absolute; inset: 0; z-index: 9999; overflow: hidden; }
+    .z-flash { position: absolute; inset: 0; background:#fff; opacity:0; animation: zFlash .5s ease-out; }
+    @keyframes zFlash { 0%{opacity:0;} 20%{opacity:.9;} 100%{opacity:0;} }
+    .z-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; animation: zBgIn .4s ease-out .2s forwards; }
+    @keyframes zBgIn { to { opacity: .96; } }
+    .z-effect { position: absolute; left:50%; top:42%; transform: translate(-50%,-50%) scale(.5); width: 360px; height: 360px; object-fit: contain; opacity:0; animation: zEffect .5s cubic-bezier(.34,1.56,.64,1) .35s forwards; }
+    @keyframes zEffect { 0%{opacity:0; transform:translate(-50%,-50%) scale(.5);} 60%{opacity:1; transform:translate(-50%,-50%) scale(1.2);} 100%{opacity:1; transform:translate(-50%,-50%) scale(1);} }
+    .z-dice-row { position: absolute; left:50%; top:44%; transform: translate(-50%,-50%); display:flex; gap:14px; z-index:2; }
+    .z-die { position: relative; width: 92px; height: 92px; display:grid; place-items:center; filter: drop-shadow(0 0 22px var(--zc)); opacity:0; animation: zDie .4s ease-out .3s forwards; }
+    @keyframes zDie { from{opacity:0; transform: scale(.4);} to{opacity:1; transform: scale(1);} }
+    .z-die .die-body { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+    .z-die .die-face { position:absolute; width:52%; height:52%; left:50%; top:47%; transform:translate(-50%,-50%); object-fit:contain; }
+    .z-die .face-emoji { position:absolute; left:50%; top:47%; transform:translate(-50%,-50%); font-size:40px; }
+    .z-banner { position: absolute; left:50%; top:20%; transform: translate(-50%,-50%); width: 320px; height: 118px; display:grid; place-items:center; z-index:3; animation: zBannerIn .35s ease-out .2s both; }
+    @keyframes zBannerIn { from{ transform: translate(-50%,-160%); opacity:0; } to{ transform: translate(-50%,-50%); opacity:1; } }
+    .z-banner .scroll-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; }
+    .z-banner .scroll-content { position:relative; z-index:2; text-align:center; }
+    .z-badge { display:inline-block; margin-top:4px; padding:3px 10px; border-radius:999px; color:#fff; font-size:12px; font-weight:800; }
+    .z-chara { position:absolute; left:50%; bottom:12%; transform:translateX(-50%); width:120px; height:120px; z-index:3; animation: zJump .3s ease-in-out .5s 2 alternate; }
+    .z-chara img { width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); }
+    @keyframes zJump { from{ transform: translateX(-50%) translateY(0);} to{ transform: translateX(-50%) translateY(-22px);} }
+    .z-next { position:absolute; left:50%; bottom:5%; transform:translateX(-50%); color:#fff; font-weight:800; font-size:14px; background:rgba(0,0,0,.5); padding:6px 16px; border-radius:999px; animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+
+    /* ============ SCREEN 03 — BONUS ROLL ============ */
+    .bonus-screen { align-items: center; }
+    .bonus-dim { position:absolute; inset:0; background: radial-gradient(circle at 50% 42%, rgba(0,0,0,.26) 0%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.62) 100%); }
+    .trigger-card { position:relative; z-index:6; display:flex; align-items:center; gap:8px; background:rgba(17,24,39,.85); border:2px solid; border-radius:12px; padding:6px 14px; color:#fff; font-weight:800; font-size:13px; margin-bottom:4px; }
+    .trigger-emoji { letter-spacing:-2px; }
+    .bonus-base { position:relative; z-index:6; display:inline-flex; align-items:center; gap:5px; margin:2px auto 0;
+      font-size:14px; font-weight:800; color:#e5e7eb; background:rgba(0,0,0,.5); border:1.5px solid rgba(240,192,64,.55);
+      padding:5px 14px; border-radius:999px; }
+    .bonus-base .bb-ico { width:17px; height:17px; object-fit:contain; }
+    .bonus-base .bb-bet { font-size:11px; color:#F9A8D4; font-weight:700; }
+    .bonus-dice-wrap { position:relative; z-index:5; margin:110px 0 14px; display:grid; place-items:center; }
+    .bonus-flash { position:absolute; width:280px; height:280px; object-fit:contain; opacity:0; animation: bFlash .4s ease-out; }
+    @keyframes bFlash { 0%{opacity:0; transform:scale(.4);} 40%{opacity:1;} 100%{opacity:0; transform:scale(1.3);} }
+    .bonus-dice { width:170px; height:170px; filter: drop-shadow(0 0 22px #F0C040); }
+    .bonus-dice img { width:100%; height:100%; object-fit:contain; }
+    .bonus-dice.ready { animation: spinY 3s linear infinite; }
+    .bonus-dice.rolling { animation: spinY .45s linear infinite; }
+    .bonus-dice.result { animation: none; }
+    @keyframes spinY { from{ transform: rotateY(0);} to{ transform: rotateY(360deg);} }
+    @keyframes spinFast { from{ transform: rotateY(0);} to{ transform: rotateY(1440deg);} }
+    .gold-die-fallback { font-size: 120px; }
+    .bonus-tiles { position:relative; z-index:5; display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width:94%; margin:8px 0; }
+    .bonus-tile { width:88px; padding:8px 4px; background:rgba(17,24,39,.8); border:2px solid rgba(255,255,255,.18); border-radius:12px; text-align:center; transition: all .3s; }
+    .bonus-tile.dim { opacity:.4; }
+    .bonus-tile.hit { transform: scale(1.12); box-shadow: 0 0 16px currentColor; background:rgba(17,24,39,.95); }
+    .bonus-status { position:relative; z-index:6; margin:14px auto; padding:13px 26px; border-radius:16px; background:rgba(0,0,0,.45); border:2px dashed rgba(240,192,64,.6); color:#fde68a; font-weight:800; font-size:16px; animation: pulse .8s ease-in-out infinite; }
+    .bonus-reward { position:relative; z-index:6; display:flex; flex-direction:column; align-items:center; gap:4px; margin:8px auto 0; padding:10px 24px; background:rgba(0,0,0,.55); border:2px solid var(--gold); border-radius:18px; animation: gainPop .4s ease-out; }
+    .bonus-reward .br-formula { display:flex; align-items:center; gap:8px; font-size:18px; font-weight:800; color:#e5e7eb; }
+    .bonus-reward .br-term { display:inline-flex; align-items:center; gap:4px; }
+    .bonus-reward .brf-ico { width:22px; height:22px; object-fit:contain; }
+    .bonus-reward .br-op { color:#F9A8D4; font-weight:900; }
+    .bonus-reward .br-eq { font-size:28px; font-weight:900; }
+    .bt-label { font-size:15px; font-weight:900; color:#F0C040; }
+    .bt-sub { font-size:10px; color:#cbd5e1; margin-top:2px; }
+
+    /* ============ SCREEN 04 — ATTACK SELECT ============ */
+    .attack-screen, .result-screen, .steal-screen, .castle-screen, .season-screen { background-color: var(--navy); }
+    .castle-stage { position: relative; z-index:5; flex:1; display:grid; place-items:center; min-height:0; margin: 4px 0; }
+    .castle-img { width: 74%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(0,0,0,.5)); }
+    .castle-fallback { font-size: 160px; }
+    .target { position:absolute; transform: translate(-50%,-50%); background:none; border:none; cursor:pointer; display:grid; place-items:center; width:64px; height:64px; }
+    .target .reticle { width:56px; height:56px; object-fit:contain; animation: reticle 1.5s ease-in-out infinite; }
+    .reticle-fallback { font-size:44px; color:#DC2626; animation: reticle 1.5s ease-in-out infinite; }
+    @keyframes reticle { 0%,100%{ opacity:.6; transform:scale(1);} 50%{ opacity:1; transform:scale(1.12);} }
+    .target.picking .reticle { animation: pick .2s ease-out forwards; }
+    @keyframes pick { to { transform: scale(1.4); } }
+    .target.destroyed { opacity:.5; }
+    .target-x { font-size:34px; }
+    .target-label { position:absolute; bottom:-14px; left:50%; transform:translateX(-50%); font-size:10px; font-weight:800; color:#fff; text-shadow:0 1px 3px #000; white-space:nowrap; }
+    .predict-panel { position:relative; z-index:6; padding: 0 14px 8px; }
+    .predict-frame { background: rgba(17,24,39,.9); border:2px solid var(--gold); border-radius:12px; padding:10px 14px; color:#e5e7eb; font-size:12.5px; line-height:1.7; }
+    .predict-frame b { color:#F0C040; }
+    .predict-bonus { color:#fca5a5; font-weight:700; margin-top:2px; }
+    .attack-chara { position:absolute; right:6px; bottom:120px; width:96px; height:96px; z-index:6; }
+    .attack-chara img { width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
+
+    /* ============ SCREEN 05 — ATTACK RESULT ============ */
+    .result-screen { align-items:center; justify-content:center; }
+    .result-dim { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+    .result-pop { position:relative; z-index:6; width:86%; max-width:360px; background:linear-gradient(180deg,#1f2937,#111827); border:3px solid var(--gold); border-radius:20px; padding:18px 16px 16px; text-align:center; animation: popIn .3s ease-out; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+    @keyframes popIn { from{ transform:scale(.8); opacity:0;} to{ transform:scale(1); opacity:1;} }
+    .result-pop.ok .result-head { color:#fca5a5; }
+    .result-pop.shield .result-head { color:#93c5fd; }
+    .result-head { font-size:24px; font-weight:900; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+    .result-visual { position:relative; height:150px; display:grid; place-items:center; margin:6px 0; }
+    .rv-castle { max-height:140px; object-fit:contain; }
+    .rv-effect { position:absolute; width:180px; height:180px; object-fit:contain; animation: impact .4s cubic-bezier(.34,1.56,.64,1); }
+    .rv-effect.big { width:150px; height:150px; position:relative; }
+    @keyframes impact { 0%{ transform:scale(0);} 60%{ transform:scale(1.3);} 100%{ transform:scale(1);} }
+    .rv-burst { position:absolute; width:160px; height:160px; object-fit:contain; opacity:.85; }
+    .result-part { font-weight:800; color:#fff; margin:2px 0; }
+    .result-coin { display:flex; align-items:center; justify-content:center; gap:8px; font-size:30px; font-weight:900; margin-top:4px; }
+    .result-coin .rc-icon { width:36px; height:36px; object-fit:contain; }
+    .result-rate { font-size:12px; color:#9ca3af; }
+    .result-react { margin:6px 0; font-size:13px; color:#fbbf24; font-weight:700; }
+
+    /* ============ SCREEN 06 — STEAL ============ */
+    .steal-screen { align-items:center; }
+    /* 村レイアウト（建物タップ）は全幅で表示：align-items:center に負けないよう stretch */
+    .steal-screen .castle-stage.village { align-self:stretch; width:100%; }
+    .steal-smoke { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:20; animation: smokeFade 1s ease-out forwards; pointer-events:none; }
+    .steal-smoke-fallback { position:absolute; inset:0; background:rgba(80,60,100,.7); z-index:20; animation: smokeFade 1s ease-out forwards; }
+    @keyframes smokeFade { 0%{opacity:1;} 100%{opacity:0;} }
+    .steal-grid { position:relative; z-index:5; display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:8px 16px; width:100%; max-width:360px; }
+    .steal-card { position:relative; background:rgba(17,24,39,.82); border:2px solid rgba(255,255,255,.2); border-radius:16px; padding:12px 6px; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; transition: all .2s; }
+    .steal-card.sel { border-color:#F0C040; box-shadow:0 0 16px rgba(240,192,64,.6); transform: scale(1.04); }
+    .steal-card.revealed { border-color:#F0C040; box-shadow:0 0 16px rgba(240,192,64,.5); animation: revealPop .4s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes revealPop { 0%{ transform: scale(.85);} 60%{ transform: scale(1.06);} 100%{ transform: scale(1);} }
+    .steal-card.locked { opacity:.45; }
+    .steal-card .sc-result { display:flex; flex-direction:column; align-items:center; gap:2px; margin-top:2px; }
+    .steal-card .sc-coin { font-size:16px; font-weight:900; }
+    .steal-card .sc-box { display:flex; align-items:center; gap:3px; font-size:10px; font-weight:800; color:#fbbf24; }
+    .steal-card .sc-box .sc-boximg { width:24px; height:24px; object-fit:contain; }
+    .steal-card .sc-nobox { font-size:10px; color:#6b7280; }
+    .steal-card .sc-q { font-size:30px; font-weight:900; color:#F0C040; margin-top:2px; }
+    .steal-progress { position:relative; z-index:6; text-align:center; font-size:13px; font-weight:700; color:#fde68a; background:rgba(0,0,0,.4); margin:10px auto; padding:8px 16px; border-radius:999px; }
+    .steal-icon { width:84px; height:84px; object-fit:contain; }
+    .steal-emoji { font-size:64px; }
+    .steal-name { font-weight:800; color:#fff; font-size:14px; }
+    .steal-check { position:absolute; top:6px; right:8px; background:#F0C040; color:#4a3400; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-weight:900; }
+    .reveal-wrap { position:relative; z-index:5; width:100%; display:flex; flex-direction:column; align-items:center; padding:8px; }
+    .reveal-row { display:flex; gap:8px; justify-content:center; }
+    .reveal-card { width:96px; min-height:130px; background:rgba(17,24,39,.9); border:2px solid var(--gold); border-radius:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:8px 4px; }
+    .reveal-card .rc-ico { width:52px; height:52px; object-fit:contain; }
+    .rc-name { font-size:12px; color:#e5e7eb; font-weight:700; }
+    .rc-coin { font-size:15px; font-weight:900; }
+    .rc-box { display:flex; flex-direction:column; align-items:center; font-size:10px; color:#fbbf24; font-weight:800; }
+    .rc-box img { width:34px; height:34px; object-fit:contain; }
+    .rc-nobox { font-size:10px; color:#6b7280; }
+    .rc-q { font-size:44px; }
+    /* 結果サマリーは画面中央のモーダルにして、端末サイズに関係なく受け取りボタンが必ず見えるように */
+    .steal-summary-overlay { position:absolute; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(5,7,13,.62); }
+    .steal-summary { width:90%; max-width:340px; background:rgba(17,24,39,.9); border:2px solid var(--gold); border-radius:16px; padding:16px 18px; text-align:center; color:#e5e7eb; }
+    .ss-row { font-size:14px; margin:2px 0; } .ss-row b{ color:#F0C040; }
+    .ss-row.mult { color:#F9A8D4; font-weight:800; }
+    .ss-total { font-size:24px; font-weight:900; margin:6px 0; }
+    .ss-box-row { display:flex; align-items:center; justify-content:center; gap:5px; margin:4px auto 2px; padding:5px 12px;
+      font-size:12.5px; font-weight:800; white-space:nowrap; color:#fde68a; background:rgba(240,192,64,.14);
+      border:1.5px solid rgba(240,192,64,.5); border-radius:999px; }
+    .ss-box-ico { width:20px; height:20px; object-fit:contain; flex-shrink:0; }
+    /* スティール宝箱の中身リビール（カード or 仲間・同時には出ない） */
+    .steal-rewards { margin:8px auto 2px; }
+    .sr-head { display:flex; align-items:center; justify-content:center; gap:5px; font-size:12.5px; font-weight:900; color:#fde68a; margin-bottom:6px; }
+    .sr-box-ico { width:18px; height:18px; object-fit:contain; }
+    .sr-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
+    .sr-tile { width:82px; display:flex; flex-direction:column; align-items:center; gap:3px; padding:7px 4px 6px; border-radius:12px;
+      background:rgba(0,0,0,.4); border:2px solid var(--gold); opacity:0; transform:scale(.4) rotate(-8deg);
+      animation: srPop .45s cubic-bezier(.2,1.5,.5,1) forwards; box-shadow:0 0 12px rgba(240,192,64,.4); }
+    .sr-tile.char { border-color:#A855F7; box-shadow:0 0 12px rgba(168,85,247,.45); }
+    @keyframes srPop { 0%{opacity:0; transform:scale(.4) rotate(-8deg);} 60%{opacity:1; transform:scale(1.12) rotate(4deg);} 100%{opacity:1; transform:scale(1) rotate(0);} }
+    .sr-img { width:52px; height:52px; object-fit:contain; filter:drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+    .sr-emoji { font-size:40px; }
+    .sr-cap { font-size:9.5px; font-weight:800; color:#e5e7eb; text-align:center; line-height:1.2; }
+    .steal-chara { position:absolute; left:4px; bottom:14px; width:84px; height:84px; z-index:6; }
+    .steal-chara img { width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
+
+    /* ============ SCREEN 07 — CASTLE BUILD ============ */
+    .castle-stage.build { flex: 0 0 auto; height: 34%; }
+    .cpart { position:absolute; transform:translate(-50%,-50%); width:40px; height:40px; border-radius:50%; border:3px solid; background:rgba(0,0,0,.55); color:#fff; font-size:18px; cursor:pointer; display:grid; place-items:center; }
+    .cpart.sel { box-shadow:0 0 14px #F0C040; transform:translate(-50%,-50%) scale(1.15); }
+    .cpart.built { animation: builtPulse .7s ease-out; }
+    @keyframes builtPulse { 0%{ box-shadow:0 0 0 0 rgba(240,192,64,.8);} 100%{ box-shadow:0 0 0 24px rgba(240,192,64,0);} }
+    .cpart-burst { position:absolute; width:110px; height:110px; object-fit:contain; pointer-events:none; }
+    .build-panel { position:relative; z-index:6; margin:4px 12px; background:rgba(17,24,39,.9); border:2px solid var(--gold); border-radius:14px; padding:10px 14px; }
+    .bp-head { display:flex; justify-content:space-between; align-items:baseline; color:#fff; }
+    .bp-name { font-size:16px; font-weight:900; }
+    .bp-lvl { font-size:13px; color:#F0C040; font-weight:800; }
+    .bp-dots { display:flex; gap:4px; margin:6px 0; }
+    .bp-dots i, .pc-dots i { width:12px; height:12px; border-radius:3px; background:#334155; display:block; }
+    .bp-dots i.on, .pc-dots i.on { background:#F0C040; }
+    .bp-done { text-align:center; color:#34d399; font-weight:900; padding:6px; }
+    .part-cards { position:relative; z-index:6; display:flex; gap:8px; overflow-x:auto; padding:6px 12px 12px; scroll-snap-type:x mandatory; }
+    .part-card { flex:0 0 auto; width:88px; background:rgba(17,24,39,.85); border:2px solid; border-radius:12px; padding:8px 6px; text-align:center; cursor:pointer; scroll-snap-align:center; }
+    .part-card.sel { box-shadow:0 0 12px rgba(240,192,64,.6); }
+    .pc-label { font-size:12px; font-weight:800; color:#fff; }
+    .pc-state { font-size:12px; font-weight:800; margin:4px 0; }
+    .pc-dots { display:flex; gap:2px; justify-content:center; margin:5px 0; }
+    .pc-dots i { width:8px; height:8px; }
+    .pc-cost { font-size:11px; color:#F0C040; font-weight:700; }
+    .stage-clear { position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; background:rgba(0,0,0,.72); animation: fadeIn .4s ease; }
+    .stage-clear .sc-title { font-size:34px; font-weight:900; color:#F0C040; text-shadow:0 3px 10px #000; }
+    .stage-clear .sc-sub { font-size:15px; font-weight:700; color:#fff; margin-bottom:10px; }
+
+    /* ---------- Top-bar right button group + day/night ---------- */
+    .topbar-right { display:flex; gap:6px; align-items:center; }
+
+    /* ---------- Build hint + tappable build cards (no separate build button) ---------- */
+    .build-hint { position:relative; z-index:6; text-align:center; font-size:11.5px; font-weight:700; color:#fde68a; background:rgba(0,0,0,.4); margin:2px 12px 4px; padding:5px 8px; border-radius:8px; }
+    .build-card { flex:0 0 auto; width:94px; background:rgba(17,24,39,.9); border:2px solid; border-radius:12px; padding:8px 6px 9px; text-align:center; color:#fff; cursor:pointer; scroll-snap-align:center; transition: transform .08s, box-shadow .12s; }
+    .build-card:active:not(:disabled) { transform: translateY(2px) scale(.97); }
+    .build-card:disabled { cursor:default; }
+    .build-card.poor { opacity:.55; }
+    .build-card.poor .pc-cost { color:#fca5a5; }
+    .build-card.pressed { box-shadow:0 0 16px #F0C040; }
+    .build-card .pc-lvl { font-size:11px; color:#F0C040; font-weight:800; margin-top:1px; }
+
+    /* ---------- Village build / attack items ---------- */
+    .castle-stage.village { position:relative; flex:1; min-height:0; margin:2px 0 4px; overflow:hidden; }
+    .village-item { position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; cursor:pointer; }
+    .village-item .vi-img { position:relative; z-index:1; object-fit:contain; display:block; filter: drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
+    .village-item .vi-emoji { font-size:60px; }
+    .village-item.sel { z-index:6; }
+    .village-item.sel .vi-img { filter: drop-shadow(0 0 10px #F0C040) drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
+    .village-item.sel::after { content:''; position:absolute; inset:-8px 6px 12px; border:2px dashed #F0C040; border-radius:14px; pointer-events:none; }
+    .village-item .vi-check { position:absolute; top:-4px; right:2px; background:#059669; color:#fff; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-weight:900; font-size:13px; border:2px solid #fff; }
+    .village-item .vi-burst { position:absolute; z-index:0; top:46%; left:50%; transform:translate(-50%,-50%); width:150px; height:150px; object-fit:contain; pointer-events:none; }
+    .village-item.built .vi-img { animation: builtPop .5s ease-out; }
+    @keyframes builtPop { 0%{ transform:scale(.9);} 50%{ transform:scale(1.1);} 100%{ transform:scale(1);} }
+    .village-item .target-label { position:relative; bottom:auto; left:auto; transform:none; margin-top:3px; font-size:10px; font-weight:800; color:#fff; text-shadow:0 1px 3px #000; white-space:nowrap; background:rgba(0,0,0,.45); padding:1px 7px; border-radius:6px; }
+    /* attack / steal variant */
+    .village-item.attackable .target-overlay, .village-item.stealable .target-overlay { position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:5; }
+    .village-item.attackable .reticle, .village-item.stealable .reticle { width:64px; height:64px; object-fit:contain; filter: drop-shadow(0 0 6px rgba(220,38,38,.9)); animation: reticle 1.5s ease-in-out infinite; }
+    .village-item.attackable.picking .vi-img { animation: pick .28s ease-out forwards; }
+    /* 攻撃：コイン噴出（連番）＋破壊状態＋シールド防御 */
+    .village-item.hit .vi-img { animation: hitShake .18s ease-in-out 2; }
+    @keyframes hitShake { 0%,100%{ transform:translateX(0);} 25%{ transform:translateX(-4px) rotate(-2deg);} 75%{ transform:translateX(4px) rotate(2deg);} }
+    .village-item.broken .vi-img { filter: grayscale(1) brightness(.42) drop-shadow(0 4px 6px rgba(0,0,0,.55)); transform: rotate(-3deg) scale(.9); }
+    .village-item .vi-rubble { position:absolute; z-index:2; top:58%; left:50%; transform:translate(-50%,-50%); width:96px; height:96px; object-fit:contain; pointer-events:none; filter:drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+    /* 連番エフェクト（コイン噴出／攻撃インパクト／盗み）共通 */
+    .fx-anim { position:absolute; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:7; }
+    .fx-anim .fx-f { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:0; }
+    .fx-anim .fx-f.on { opacity:1; }
+    .fx-anim.coinfx  { top:30%; width:150px; height:150px; }
+    .fx-anim.burstfx { top:44%; width:300px; height:300px; z-index:8; filter:drop-shadow(0 0 12px rgba(255,170,40,.8)); }
+    .fx-anim.stealfx { top:40%; width:180px; height:180px; }
+    .fx-anim.shinefx { top:36%; width:270px; height:270px; z-index:6; }
+    /* メインロールのコイン噴き上げ：ダイスの上でフレームが上方向に舞う */
+    .fx-anim.rollspray { top:44%; width:210px; height:210px; z-index:6; }
+    /* コイン獲得の大パーティクル：画面下から噴き上がって弧を描いて散る */
+    .coin-particles { position:absolute; inset:0; z-index:45; pointer-events:none; overflow:hidden; }
+    /* 上昇は減速(ease-out)、頂点以降の落下は加速(ease-in) ＝ 重力っぽい放物線 */
+    .coin-p { position:absolute; bottom:64px; object-fit:contain; opacity:0; transform-origin:center;
+      will-change:transform,opacity; filter:drop-shadow(0 3px 5px rgba(0,0,0,.55));
+      animation-name:coinFall; animation-timing-function:cubic-bezier(.1,.55,.35,1); animation-fill-mode:forwards; }
+    .coin-p-emoji { font-size:30px; }
+    @keyframes coinFall {
+      0%   { opacity:0; transform:translate(-50%, 6px) rotate(0deg) scale(.5); }
+      8%   { opacity:1; }
+      /* 打ち上げの頂点。ここから先(落下)は ease-in で加速させる */
+      46%  { opacity:1; transform:translate(calc(-50% + var(--dx) * .5), calc(var(--up) * -1)) rotate(calc(var(--rot) * .45)) scale(1.05); animation-timing-function:cubic-bezier(.55,0,.9,.45); }
+      100% { opacity:0; transform:translate(calc(-50% + var(--dx)), 48vh) rotate(var(--rot)) scale(.82); }
+    }
+    /* 獲得カードの飛翔演出：オフセンター(上部)で出して左レールへ飛ぶ */
+    .card-fly { position:absolute; z-index:120; top:23%; left:50%; transform:translateX(-50%);
+      display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none;
+      width:88px; will-change:transform,opacity; }
+    .card-fly.reveal { animation: cardFlyReveal .5s cubic-bezier(.2,1.5,.4,1); }
+    .card-fly.fly { transition: transform .56s cubic-bezier(.5,0,.75,.35), opacity .56s ease-in; }
+    @keyframes cardFlyReveal { 0%{ opacity:0; transform:translateX(-50%) scale(.4) rotate(-10deg);} 60%{ opacity:1; transform:translateX(-50%) scale(1.12) rotate(4deg);} 100%{ opacity:1; transform:translateX(-50%) scale(1) rotate(0);} }
+    .card-fly .cf-fly-img { width:76px; height:76px; object-fit:contain; filter:drop-shadow(0 4px 8px rgba(0,0,0,.55)); border-radius:8px; }
+    .card-fly.gold .cf-fly-img { filter:drop-shadow(0 0 12px rgba(240,192,64,.9)) drop-shadow(0 4px 8px rgba(0,0,0,.55)); }
+    .card-fly .cf-fly-cap { font-size:11px; font-weight:900; color:#fde68a; background:rgba(0,0,0,.6); padding:2px 10px; border-radius:999px; white-space:nowrap; }
+    /* カード到着時に左レール「カード」ボタンが弾む */
+    .rail-btn.pulse { animation: railBounce .5s cubic-bezier(.2,1.5,.4,1); }
+    @keyframes railBounce { 0%{ transform:scale(1);} 35%{ transform:scale(1.22); filter:drop-shadow(0 0 10px rgba(240,192,64,.9));} 100%{ transform:scale(1);} }
+    .village-item .box-get { position:absolute; inset:0; pointer-events:none; z-index:7; }
+    .village-item .box-get-img { position:absolute; z-index:8; top:34%; left:50%; transform:translate(-50%,-50%); width:70px; height:70px; object-fit:contain; animation: boxGetPop .5s cubic-bezier(.2,1.5,.5,1); filter:drop-shadow(0 3px 5px rgba(0,0,0,.5)); }
+    @keyframes boxGetPop { 0%{ transform:translate(-50%,-50%) scale(0) rotate(-20deg); } 60%{ transform:translate(-50%,-50%) scale(1.2) rotate(6deg); } 100%{ transform:translate(-50%,-50%) scale(1) rotate(0); } }
+    .village-item .box-get-label { position:absolute; z-index:9; top:9%; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:13px; font-weight:900; color:#4a3400; background:linear-gradient(180deg,#F0C040,#D4A017); border:2px solid #fff6d5; padding:3px 12px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,.5); animation: boxGetPop .45s ease-out; }
+    .village-item .vi-shieldfx { position:absolute; z-index:6; top:44%; left:50%; transform:translate(-50%,-50%); width:96px; height:96px; object-fit:contain; pointer-events:none; animation: shieldPop .4s ease-out; }
+    @keyframes shieldPop { 0%{ transform:translate(-50%,-50%) scale(.5); opacity:0;} 40%{ transform:translate(-50%,-50%) scale(1.1); opacity:1;} 100%{ transform:translate(-50%,-50%) scale(1); opacity:1;} }
+    /* スティール：建物タップ方式 */
+    .village-item.stealable .reticle.steal { filter: drop-shadow(0 0 6px rgba(56,189,248,.9)); }
+    .village-item.swiping .vi-img { animation: hitShake .16s ease-in-out 2; }
+    .village-item.looted .vi-img { filter: brightness(.78) drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
+    .village-item .sc-loot { position:absolute; z-index:6; top:-2px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:3px;
+      background:rgba(0,0,0,.6); border:1.5px solid var(--gold); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+    .village-item .sc-loot .sc-coin { font-size:12px; font-weight:900; }
+    .village-item .sc-loot .sc-loot-box { width:16px; height:16px; object-fit:contain; }
+    /* ---------- Auto-roll STOP button ---------- */
+    .roll-btn.stop {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+      font-size: 20px; border-color: #cbd5e1;
+      background: radial-gradient(circle at 38% 32%, #94a3b8, #475569 55%, #334155);
+      box-shadow: 0 8px 0 #1e293b, 0 12px 20px rgba(0,0,0,.5), inset 0 0 0 4px rgba(255,255,255,.12);
+    }
+    .roll-btn.stop:active { transform: translateY(6px); box-shadow: 0 2px 0 #1e293b, 0 4px 10px rgba(0,0,0,.5), inset 0 0 0 4px rgba(255,255,255,.12); }
+    .roll-btn.stop .stop-ico { font-size: 26px; line-height: 1; }
+
+    /* ---------- DEBUG panel ---------- */
+    .debug-fab {
+      position: absolute; top: 150px; right: 8px; z-index: 50;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(10,14,25,.75); border: 2px solid #a3e635; color: #fff;
+      font-size: 19px; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,.5);
+    }
+    .debug-panel {
+      position: absolute; top: 150px; right: 8px; z-index: 51;
+      width: 214px; background: rgba(10,14,25,.97); border: 2px solid #a3e635;
+      border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 6px;
+      box-shadow: 0 10px 28px rgba(0,0,0,.65);
+    }
+    .debug-head { font-size: 12px; font-weight: 800; color: #a3e635; text-align: center; margin-bottom: 2px; letter-spacing: .5px; }
+    .debug-item {
+      text-align: left; padding: 9px 11px; border-radius: 9px;
+      border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06);
+      color: #e5e7eb; font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .debug-item:active { background: rgba(163,230,53,.25); }
+    .debug-item:disabled { opacity: .4; cursor: default; }
+    .debug-close { margin-top: 3px; padding: 8px; border-radius: 9px; border: none; background: #334155; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+    /* ============ ROLL POINT (bet) selector ============ */
+    .bet-bar { position: relative; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 12px 4px; }
+    .bet-label { font-size: 11px; font-weight: 700; color: #cbd5e1; }
+    .bet-btn { min-width: 38px; padding: 5px 8px; border-radius: 10px; border: 2px solid rgba(240,192,64,.45); background: rgba(0,0,0,.4); color: #fde68a; font-weight: 900; font-size: 14px; cursor: pointer; }
+    .bet-btn.on { background: linear-gradient(180deg,#F0C040,#D4A017); color: #4a3400; border-color: #fff6d5; box-shadow: 0 0 10px rgba(240,192,64,.6); }
+    .bet-btn:disabled { opacity: .5; cursor: default; }
+    .bet-hint { font-size: 10.5px; color: #9ca3af; margin-left: 4px; }
+
+    /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
+    .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 16px;
+      pointer-events: none; }   /* 全幅バーがタップを奪わないよう透過。ロールボタンだけ受ける */
+    .bottom-dock .roll-zone { padding: 0; margin: 0 4px; pointer-events: auto; }
+    .nav-btn {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      background: rgba(17,24,39,.72); border: 1.5px solid rgba(240,192,64,.4);
+      border-radius: 14px; padding: 8px 4px; min-width: 58px; margin-bottom: 26px;
+      color: #fff; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,.4);
+      transition: transform .08s;
+    }
+    .nav-btn:active { transform: translateY(2px); background: rgba(240,192,64,.22); }
+    .nav-btn .nb-ico { font-size: 22px; line-height: 1; }
+    .nav-btn .nb-label { font-size: 10px; font-weight: 800; }
+    .nav-btn .nb-badge { position: absolute; top: -8px; right: -6px; background: var(--red); color: #fff; font-size: 10px; font-weight: 900; padding: 1px 5px; border-radius: 999px; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+
+    /* ============ MULTIPLIER OVERLAY (zorume coin ×N) ============ */
+    .mult-overlay { position:absolute; inset:0; z-index:9998; display:grid; place-items:center; background:rgba(5,7,13,.78); overflow:hidden; }
+    /* ジャックポット専用背景（BG_Jackpot）＋中央を暗くして文字を読みやすく */
+    .mult-overlay.jackpot { background-size:cover; background-position:center; }
+    .mult-overlay.jackpot::before { content:""; position:absolute; inset:0; z-index:1;
+      background:radial-gradient(circle at 50% 42%, rgba(6,10,22,0) 0%, rgba(6,10,22,.18) 55%, rgba(6,10,22,.42) 100%); }
+    /* 着地時のみの控えめなフラッシュ（回転中は出さない） */
+    .mult-flash { position:absolute; inset:0; background:#fff; opacity:0; animation: zFlashSoft .55s ease-out; z-index:2; pointer-events:none; }
+    @keyframes zFlashSoft { 0%{ opacity:.32; } 100%{ opacity:0; } }
+    .mult-tap { margin-top:6px; font-size:13px; font-weight:800; color:#fde68a; background:rgba(0,0,0,.45); padding:6px 16px; border-radius:999px; animation: pulse 1s ease-in-out infinite; }
+    .mult-sub2 { font-size:14px; font-weight:800; color:#fde68a; margin-left:8px; opacity:.9; }
+
+    /* ============ JACKPOT スロットリール ============ */
+    .jp-slot { position:relative; width:280px; height:264px; overflow:hidden; margin:4px 0 2px;
+      border-radius:18px; border:3px solid #F0C040; background:rgba(6,9,16,.62);
+      box-shadow:0 0 22px rgba(240,192,64,.35), inset 0 0 30px rgba(0,0,0,.6); }
+    /* 中央の当たりライン（上から2枚目=中央タイルの帯） */
+    .jp-slot-line { position:absolute; left:0; right:0; top:88px; height:88px; z-index:3; pointer-events:none;
+      border-top:2px solid rgba(240,192,64,.85); border-bottom:2px solid rgba(240,192,64,.85);
+      background:linear-gradient(rgba(240,192,64,.12), rgba(240,192,64,.06)); }
+    .jp-slot.land .jp-slot-line, .jp-slot.total .jp-slot-line { box-shadow:0 0 20px rgba(240,192,64,.6); }
+    /* 上下フェード（回転を強調） */
+    .jp-slot::before, .jp-slot::after { content:""; position:absolute; left:0; right:0; height:56px; z-index:2; pointer-events:none; }
+    .jp-slot::before { top:0; background:linear-gradient(rgba(6,9,16,.92), rgba(6,9,16,0)); }
+    .jp-slot::after  { bottom:0; background:linear-gradient(rgba(6,9,16,0), rgba(6,9,16,.92)); }
+    .jp-reel { position:absolute; top:0; left:0; right:0; z-index:1; will-change:transform; }
+    .jp-tile { height:88px; box-sizing:border-box; display:flex; align-items:center; gap:12px; padding:0 18px;
+      margin:0 6px; border-radius:12px; }
+    .jp-tile .jpt-ico { width:44px; height:44px; object-fit:contain; flex:0 0 auto; }
+    .jpt-ico.jpt-emoji { display:flex; align-items:center; justify-content:center; font-size:34px; }
+    .jp-tile .jpt-text { display:flex; flex-direction:column; align-items:flex-start; line-height:1.15; }
+    .jp-tile .jpt-name { font-size:24px; font-weight:900; color:#fff; letter-spacing:.5px; text-shadow:0 1px 3px #000; }
+    .jp-tile .jpt-mult { font-size:14px; font-weight:800; color:#fde68a; }
+    /* 各タイルに暗いパネルを敷いて背景に負けず読める。中央の当選タイルは着地で強調。 */
+    .jp-tile { background:rgba(12,17,28,.82); border:1px solid rgba(255,255,255,.06); }
+    .jp-slot.land .jp-tile.win, .jp-slot.total .jp-tile.win {
+      background:linear-gradient(rgba(60,42,10,.9), rgba(30,20,4,.9)); border-color:#F0C040;
+      box-shadow:0 0 22px rgba(240,192,64,.7); }
+    .jp-slot.land .jp-tile.win { animation: jpWinPop .55s cubic-bezier(.2,1.6,.4,1); }
+    .jp-slot.land .jp-tile.win .jpt-name, .jp-slot.total .jp-tile.win .jpt-name { color:#FDE68A; text-shadow:0 0 12px rgba(240,192,64,.8); }
+    @keyframes jpWinPop { 0%{ transform:scale(1); } 45%{ transform:scale(1.09); } 100%{ transform:scale(1); } }
+    /* 仲間召喚：当選が忍者召喚/超JPのとき、もらえる仲間のかけらを表示 */
+    .jp-summon { display:flex; align-items:center; gap:10px; margin-top:2px; padding:7px 16px 7px 8px; border-radius:999px;
+      background:rgba(168,85,247,.16); border:2px solid #A855F7; box-shadow:0 0 16px rgba(168,85,247,.45); animation: jpWinPop .5s ease-out; }
+    .jp-summon.legend { background:rgba(240,192,64,.16); border-color:#F0C040; box-shadow:0 0 16px rgba(240,192,64,.5); }
+    .jp-summon.rare { background:rgba(56,189,248,.16); border-color:#38BDF8; box-shadow:0 0 16px rgba(56,189,248,.45); }
+    .jp-summon-ico { width:46px; height:46px; object-fit:contain; flex:0 0 auto; }
+    .jp-summon-txt { font-size:14px; font-weight:800; color:#fff; text-align:left; line-height:1.25; }
+    .jp-summon-txt b { color:#fde68a; }
+    .mult-inner { position:relative; z-index:2; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px; }
+    .mult-label { font-size:22px; font-weight:900; color:#F0C040; text-shadow:0 2px 8px #000; }
+    .mult-base { display:flex; align-items:center; gap:6px; font-size:22px; font-weight:800; color:#fff; }
+    .mult-base .mb-ico { width:26px; height:26px; object-fit:contain; }
+    .mult-x { font-size:64px; font-weight:900; color:#fff; text-shadow:0 0 16px #F0C040, 0 3px 0 #b45309; animation: multSlam .45s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes multSlam { 0%{ transform:scale(2.6) rotate(-12deg); opacity:0; } 60%{ transform:scale(.88) rotate(4deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
+    .mult-total { font-size:34px; font-weight:900; animation: gainPop .4s ease-out; }
+
+    /* ============ SHIELD OVERLAY (シールドぞろ目 獲得演出) ============ */
+    .shield-overlay { position:absolute; inset:0; z-index:9998; display:grid; place-items:center; overflow:hidden;
+      background:radial-gradient(circle at 50% 42%, rgba(37,99,235,.42), rgba(5,7,13,.9)); }
+    .shield-flash { position:absolute; inset:0; background:#bfdbfe; opacity:0; animation: zFlash .5s ease-out; }
+    .shield-rays { position:absolute; width:760px; height:760px; border-radius:50%; opacity:.45;
+      background:conic-gradient(from 0deg, rgba(96,165,250,0) 0 9deg, rgba(147,197,253,.30) 9deg 18deg);
+      animation: spinSlow 9s linear infinite; }
+    .shield-fx { position:absolute; width:420px; height:420px; object-fit:contain; opacity:.9; animation: shieldFxIn .6s cubic-bezier(.2,1.4,.4,1); }
+    @keyframes shieldFxIn { 0%{opacity:0; transform:scale(.4);} 60%{opacity:1; transform:scale(1.15);} 100%{opacity:.9; transform:scale(1);} }
+    .shield-inner { position:relative; z-index:2; text-align:center; display:flex; flex-direction:column; align-items:center; gap:12px; }
+    .shield-big { width:154px; height:154px; object-fit:contain; filter: drop-shadow(0 0 26px #60a5fa); animation: shieldSlam .5s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes shieldSlam { 0%{opacity:0; transform:scale(2.4) rotate(-22deg);} 55%{opacity:1; transform:scale(.9) rotate(6deg);} 100%{transform:scale(1) rotate(0);} }
+    .shield-title { font-size:30px; font-weight:900; color:#dbeafe; letter-spacing:1px;
+      text-shadow:0 2px 10px #1e3a8a, 0 0 20px rgba(96,165,250,.9); animation: gainPop .4s ease-out .08s both; }
+    .shield-pips { display:flex; gap:12px; }
+    .shield-pips i { width:24px; height:24px; border-radius:50%; background:#1e293b; border:2px solid #475569; transition: all .3s ease; }
+    .shield-pips i.on { background:#60a5fa; border-color:#dbeafe; box-shadow:0 0 16px #60a5fa; transform:scale(1.15); }
+    .shield-sub { font-size:14px; font-weight:800; color:#e5e7eb; background:rgba(0,0,0,.45); padding:6px 16px; border-radius:999px; }
+
+    /* ============ ROADMAP FEATURES ============ */
+    .red-btn { background: linear-gradient(180deg,#f87171,#dc2626); border-color:#fecaca; }
+    .asym-note { position:relative; z-index:6; text-align:center; font-size:12px; font-weight:800; margin:0 12px 4px; padding:5px 10px; border-radius:8px; }
+    .asym-note.steal { color:#fbcfe8; background:rgba(219,39,119,.25); border:1px solid rgba(219,39,119,.6); }
+    .asym-note.attack { color:#fecaca; background:rgba(220,38,38,.22); border:1px solid rgba(220,38,38,.6); }
+
+    /* generic sheet screen (collection/season/invite/shop/clan) */
+    .sheet-screen { background: var(--navy); background-size: cover; background-position: center; }
+    .sheet-scroll { position:relative; z-index:5; flex:1; overflow-y:auto; padding:8px 12px 20px; }
+
+    /* menu overlay */
+    .menu-overlay { position:absolute; inset:0; z-index:200; background:rgba(0,0,0,.6); display:flex; align-items:flex-end; }
+    .menu-sheet { width:100%; background:linear-gradient(180deg,#1f2937,#111827); border-top:3px solid var(--gold); border-radius:20px 20px 0 0; padding:16px 16px 20px; animation: sheetUp .25s ease-out; }
+    @keyframes sheetUp { from{ transform: translateY(100%);} to{ transform: translateY(0);} }
+    .menu-title { text-align:center; color:#F0C040; font-weight:900; font-size:16px; margin-bottom:12px; }
+    .menu-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px; }
+    .menu-item { background:rgba(255,255,255,.06); border:1.5px solid rgba(240,192,64,.4); border-radius:14px; padding:14px 6px; display:flex; flex-direction:column; align-items:center; gap:6px; color:#fff; font-weight:700; font-size:12px; cursor:pointer; }
+    .menu-item:active { background:rgba(240,192,64,.2); }
+    .mi-icon { font-size:26px; }
+
+    /* collection */
+    .card-set { background:rgba(17,24,39,.6); border:2px solid; border-radius:16px; padding:10px 10px 12px; margin-bottom:12px; }
+    .cs-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+    .cs-name { font-weight:900; font-size:15px; } .cs-prog { color:#e5e7eb; font-weight:800; font-size:13px; }
+    .card-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+    .card-face { position:relative; aspect-ratio:3/4; border-radius:10px; border:2px solid rgba(255,255,255,.15); background:rgba(0,0,0,.35); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; overflow:hidden; }
+    .card-face.owned { border-color:rgba(240,192,64,.5); background:rgba(31,42,68,.9); }
+    .card-face.gold.owned { border-color:#F0C040; box-shadow:0 0 12px rgba(240,192,64,.6); background:linear-gradient(180deg,#3a2f10,#1f2937); }
+    .card-face .cf-img { width:78%; height:60%; object-fit:contain; }
+    .card-face .cf-emoji { font-size:34px; } .card-face .cf-q { font-size:30px; color:#4b5563; }
+    .card-face .cf-name { font-size:9px; font-weight:700; color:#e5e7eb; text-align:center; line-height:1.1; padding:0 2px; }
+    .card-face .cf-goldtag { position:absolute; top:3px; right:3px; font-size:7px; font-weight:900; color:#4a3400; background:#F0C040; padding:1px 4px; border-radius:4px; }
+
+    /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）===== */
+    .side-rail { position:absolute; z-index:7; top:180px; display:flex; flex-direction:column; gap:9px; }
+    .side-rail.left { left:5px; } .side-rail.right { right:5px; }
+    .rail-btn { position:relative; width:58px; display:flex; flex-direction:column; align-items:center; gap:0;
+      padding:10px 4px 8px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
+      background:url("assets/images/Btn_Nav.png") center/100% 100% no-repeat; }
+    .rail-btn:active { transform:translateY(1px); filter:drop-shadow(0 0 7px rgba(240,192,64,.7)); }
+    .rail-ico { width:34px; height:34px; object-fit:contain; }
+    .rail-emoji { font-size:26px; line-height:1; }
+    .rail-label { font-size:10px; font-weight:900; margin-top:2px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
+    .rail-btn .nb-badge { position:absolute; top:-6px; right:-5px; }
+
+    /* ===== 常時表示のミニマスコット（装備キャラ・左下の空きスペース）===== */
+    .game-mascot { position:absolute; z-index:8; left:8px; bottom:80px; width:86px; height:86px;
+      background:none; border:none; padding:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .game-mascot .gm-img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+      opacity:0; filter:drop-shadow(0 5px 6px rgba(0,0,0,.6)); }
+    .game-mascot .gm-img.on { opacity:1; }
+    .game-mascot .gm-emoji { font-size:44px; }
+
+    /* ===== 仲間（キャラ）画面 ===== */
+    .char-equip-banner { position:relative; z-index:5; margin:8px 12px 0; padding:10px 14px; display:flex; align-items:center; gap:12px;
+      background:linear-gradient(180deg, rgba(31,42,68,.95), rgba(17,24,39,.95)); border:2px solid var(--gold); border-radius:14px; min-height:56px; }
+    .char-equip-banner .ceb-img { width:52px; height:52px; object-fit:contain; flex-shrink:0; filter:drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+    .ceb-info { min-width:0; } .ceb-label { font-size:10px; font-weight:800; color:var(--sakura); letter-spacing:1px; }
+    .ceb-name { font-size:16px; font-weight:900; color:#fff; } .ceb-desc { font-size:11px; color:#cbd5e1; line-height:1.3; }
+    .ceb-empty { font-size:12.5px; color:#9ca3af; font-weight:700; }
+    .char-rank-sec { background:rgba(17,24,39,.6); border:2px solid; border-radius:16px; padding:10px 10px 12px; margin-bottom:12px; }
+    .char-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+    .char-card { position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 8px 9px;
+      border-radius:12px; border:2px solid rgba(255,255,255,.12); background:rgba(0,0,0,.32); text-align:center; }
+    .char-card.owned { border-color:var(--rk); background:rgba(31,42,68,.85); }
+    .char-card.equipped { box-shadow:0 0 0 2px var(--rk), 0 0 16px var(--rk); background:rgba(31,42,68,.95); }
+    .char-card.locked { opacity:.72; }
+    /* かけらコンプ済み・ステージ未到達（解放待ち）：locked（グレー）と owned（ランク色）の中間トーン */
+    .char-card.char-pending { border-color: rgba(255,255,255,.4); background:rgba(31,42,68,.6); opacity:.94; }
+    .char-card.char-pending { border-color: color-mix(in srgb, var(--rk) 55%, rgba(255,255,255,.12)); }
+    .char-card-face { position:relative; width:74px; height:74px; border-radius:50%; display:grid; place-items:center; overflow:hidden;
+      background:radial-gradient(circle at 50% 35%, rgba(255,255,255,.12), rgba(0,0,0,.4)); border:2px solid var(--rk); }
+    .char-card-img { width:112%; height:112%; object-fit:contain; }
+    .char-lock { font-size:30px; filter:grayscale(1); opacity:.8; }
+    .char-rank-tag { position:absolute; top:-2px; right:-2px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center;
+      font-size:10px; font-weight:900; color:#0b0f19; border:1.5px solid rgba(255,255,255,.85); }
+    .char-card-name { font-size:13px; font-weight:900; color:#fff; line-height:1.1; }
+    .char-card-desc { font-size:10px; color:#cbd5e1; line-height:1.28; min-height:26px; }
+    .char-eq-btn { margin-top:2px; width:100%; padding:6px 4px; border-radius:9px; border:none; cursor:pointer;
+      font-size:12px; font-weight:900; color:#0b0f19; background:var(--rk); }
+    .char-eq-btn.on { background:#16a34a; color:#fff; }
+    .char-prog { width:100%; margin-top:2px; }
+    .char-prog-bar { height:8px; border-radius:999px; background:rgba(0,0,0,.5); overflow:hidden; border:1px solid rgba(255,255,255,.15); }
+    .char-prog-fill { height:100%; border-radius:999px; }
+    .char-prog-txt { display:block; font-size:9.5px; font-weight:700; color:#cbd5e1; margin-top:2px; }
+    .char-pending-badge { margin-top:2px; width:100%; padding:6px 4px; border-radius:9px;
+      font-size:10.5px; font-weight:900; text-align:center; letter-spacing:.3px;
+      color:#fde68a; background:rgba(0,0,0,.4); border:1.5px dashed var(--rk); }
+
+    /* card popup */
+    .card-popup { position:absolute; inset:0; z-index:180; display:grid; place-items:center; pointer-events:none; }
+    .cp-inner { background:rgba(10,14,25,.95); border:2px solid #F0C040; border-radius:18px; padding:16px 22px; text-align:center; animation: cpPop 1.9s ease-out forwards; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+    @keyframes cpPop { 0%{ transform:scale(.5); opacity:0;} 12%{ transform:scale(1.08); opacity:1;} 22%{ transform:scale(1);} 82%{ opacity:1; transform:scale(1);} 100%{ opacity:0; transform:scale(1.05);} }
+    .cp-head { color:#F0C040; font-weight:900; font-size:15px; margin-bottom:8px; }
+    .cp-inner .card-face { width:96px; margin:0 auto; }
+    /* 獲得カードのポップアップはヘッダ＋カードを縦中央揃え（border-imageの枠内で中心に） */
+    .cp-inner { display:flex !important; flex-direction:column; align-items:center; justify-content:center; }
+    /* 新キャラ入手ポップアップ（少し長めの演出） */
+    .char-win .cp-inner { animation-duration: 2.6s; max-width:280px; }
+    .char-pop-face { width:128px; height:128px; margin:2px auto 6px; border-radius:50%;
+      display:grid; place-items:center; overflow:hidden;
+      background:radial-gradient(circle at 50% 35%, rgba(255,255,255,.14), rgba(0,0,0,.35));
+      border:3px solid var(--rk, #F0C040); box-shadow:0 0 22px var(--rk, #F0C040), inset 0 0 12px rgba(0,0,0,.4); }
+    .char-pop-img { width:118%; height:118%; object-fit:contain; }
+    .char-pop-name { font-size:19px; font-weight:900; color:#fff; }
+    .char-pop-rank { font-size:12px; font-weight:900; letter-spacing:1px; margin-top:1px; }
+    .char-pop-desc { font-size:12px; color:#cbd5e1; margin-top:6px; line-height:1.4; }
+
+    /* clan raid */
+    .raid-body { position:relative; z-index:5; flex:1; display:flex; flex-direction:column; align-items:center; padding:6px 14px 18px; overflow-y:auto; }
+    .raid-title { font-size:20px; font-weight:900; color:#fca5a5; text-shadow:0 2px 6px #000; margin:4px 0 8px; }
+    .raid-boss { position:relative; display:grid; place-items:center; margin:4px 0; }
+    .raid-castle { width:190px; object-fit:contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+    .raid-castle.broken { filter: grayscale(.5) brightness(.7) drop-shadow(0 0 12px #dc2626); }
+    .raid-fx { position:absolute; width:200px; height:200px; object-fit:contain; }
+    .raid-hpbar { position:relative; width:90%; height:22px; background:rgba(0,0,0,.6); border:2px solid #7f1d1d; border-radius:999px; overflow:hidden; margin:10px 0 4px; }
+    .raid-hpfill { height:100%; background:linear-gradient(90deg,#ef4444,#f87171); transition:width .4s ease; }
+    .raid-hptext { position:absolute; inset:0; display:grid; place-items:center; font-size:12px; font-weight:900; color:#fff; text-shadow:0 1px 2px #000; }
+    .raid-log { font-size:13px; font-weight:700; color:#fde68a; background:rgba(0,0,0,.45); padding:6px 12px; border-radius:8px; margin:6px 0; min-height:20px; }
+    .clan-mates { display:flex; gap:10px; margin:8px 0; flex-wrap:wrap; justify-content:center; }
+    .clan-mates .mate { display:flex; flex-direction:column; align-items:center; font-size:10px; color:#e5e7eb; }
+    .clan-mates .mate-ico { font-size:26px; } .clan-mates .mate.you .mate-ico { filter: drop-shadow(0 0 6px #F0C040); }
+
+    /* season — 花見シーズン */
+    /* 背景画像は上部（お祭りの空・提灯）を見せ、UIは下部パネルへ */
+    .season-screen { justify-content:flex-end; }
+    .season-title { margin-top:2px; filter: drop-shadow(0 3px 8px rgba(0,0,0,.55)); }
+    .season-title .scroll-banner { width:320px; height:112px; }
+    /* ヘディングを大きく／目立たせる */
+    .season-title.scroll-banner, .scroll-banner.season-title { width:322px; height:112px; margin:2px auto 6px; }
+    .season-title .scroll-title { font-size:34px; letter-spacing:2px; }
+    .season-title .scroll-sub { font-size:12px; letter-spacing:2px; }
+
+    /* 下部パネル：画面下 ~62% を占め、上へ向かって透過するスクリム */
+    .season-body {
+      position:relative; z-index:5; flex:0 0 auto; height:62%;
+      display:flex; flex-direction:column; min-height:0;
+      padding:12px 12px 0;
+      background:linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,.55) 14%, rgba(15,23,42,.86) 34%, rgba(15,23,42,.94) 100%);
+      border-top:2px solid rgba(240,192,64,.35);
+      border-radius:22px 22px 0 0;
+      box-shadow:0 -8px 24px rgba(0,0,0,.4);
+    }
+
+    /* シーズンXPプログレスバー */
+    .season-xpbar { flex:0 0 auto; background:rgba(0,0,0,.35); border:1.5px solid rgba(240,192,64,.4); border-radius:14px; padding:9px 12px 10px; margin-bottom:10px; }
+    .season-xpbar .sx-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+    .season-xpbar .sx-label { font-size:12px; font-weight:800; color:#fbcfe8; letter-spacing:1px; }
+    .season-xpbar .sx-val { font-size:20px; font-weight:900; color:#F0C040; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    .season-xpbar .sx-track { height:12px; border-radius:999px; background:rgba(0,0,0,.5); border:1.5px solid rgba(255,255,255,.18); overflow:hidden; }
+    .season-xpbar .sx-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,#f472b6,#ec4899,#F0C040); box-shadow:0 0 8px rgba(236,72,153,.7); transition:width .4s ease; }
+    .season-xpbar .sx-next { margin-top:5px; text-align:right; font-size:11px; font-weight:700; color:#e5e7eb; }
+
+    .season-body .sheet-scroll { padding:0 0 20px; }
+    .season-track { display:flex; flex-direction:column; gap:8px; }
+    .season-tier { display:grid; grid-template-columns:48px 1fr 56px 60px; align-items:center; gap:8px; background:rgba(17,24,39,.62); border:1.5px solid #334155; border-radius:14px; padding:9px 10px; opacity:.7; transition:border-color .2s, opacity .2s; }
+    .season-tier.on { opacity:1; border-color:#f472b6; background:linear-gradient(180deg, rgba(236,72,153,.16), rgba(17,24,39,.72)); box-shadow:0 0 0 1px rgba(244,114,182,.35) inset; }
+    .season-tier.claimed { opacity:.85; border-color:rgba(52,211,153,.55); background:rgba(6,78,59,.35); }
+    .st-tier { font-weight:900; color:#F0C040; font-size:14px; } .st-reward { font-weight:800; color:#fff; } .st-req { font-size:11px; color:#cbd5e1; text-align:right; }
+    .season-tier.locked .st-req { color:#9ca3af; }
+    .tier-btn { padding:7px 4px; border-radius:8px; border:none; background:#334155; color:#9ca3af; font-weight:800; font-size:12px; cursor:pointer; }
+    .tier-btn.ready { background:linear-gradient(180deg,#34d399,#059669); color:#fff; }
+    .season-tier.claimed .tier-btn { background:rgba(52,211,153,.25); color:#6ee7b7; }
+
+    /* invite */
+    .invite-hero { position:relative; z-index:6; text-align:center; padding:10px 14px; }
+    .invite-code { color:#e5e7eb; font-size:14px; margin-bottom:8px; } .invite-code b{ color:#F0C040; letter-spacing:1px; }
+    .invite-note { font-size:11px; color:#9ca3af; margin-top:6px; }
+    .invite-mile { display:grid; grid-template-columns:28px 1fr 90px 56px; align-items:center; gap:6px; background:rgba(17,24,39,.6); border:1.5px solid #334155; border-radius:12px; padding:9px 10px; margin-bottom:8px; }
+    .invite-mile.reached { border-color:#059669; }
+    .im-label { font-size:12px; font-weight:700; color:#fff; } .im-reward { font-size:12px; font-weight:800; color:#F0C040; text-align:right; }
+
+    /* shop */
+    .shop-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .shop-pack { position:relative; background:rgba(17,24,39,.75); border:2px solid var(--gold); border-radius:16px; padding:12px 8px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .pack-tag { position:absolute; top:-8px; right:8px; background:var(--red); color:#fff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:999px; }
+    .pack-title { font-weight:900; color:#fff; font-size:14px; }
+    .pack-contents { font-size:13px; color:#F0C040; font-weight:800; line-height:1.5; }
+    .shop-note { text-align:center; font-size:11px; color:#9ca3af; margin-top:12px; }
+
+    /* ===== Shinobi Mart（総合ショップ）===== */
+    .mini-bar .shop-coins { margin-left:auto; font-size:14px; font-weight:900; color:#F0C040; display:inline-flex; align-items:center; gap:4px; }
+    .shop-coins .sc-koban { width:18px; height:18px; object-fit:contain; }
+    .shop-sec { margin-bottom:16px; }
+    .shop-sec-head { display:flex; align-items:baseline; justify-content:space-between; margin:2px 2px 8px; }
+    .shop-sec-title { font-size:15px; font-weight:900; color:#fff; }
+    .shop-sec-note { font-size:10.5px; color:var(--sakura); font-weight:700; }
+    .piece-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+    .piece-offer { position:relative; display:flex; flex-direction:column; align-items:center; gap:5px; padding:12px 8px 10px;
+      border-radius:14px; border:2px solid var(--rk); background:rgba(17,24,39,.8); text-align:center; }
+    .piece-offer.bought { opacity:.55; }
+    .po-face { position:relative; width:66px; height:66px; border-radius:50%; display:grid; place-items:center; overflow:hidden;
+      background:radial-gradient(circle at 50% 35%, rgba(255,255,255,.12), rgba(0,0,0,.4)); border:2px solid var(--rk); }
+    .po-img { width:112%; height:112%; object-fit:contain; }
+    .po-name { font-size:13px; font-weight:900; color:#fff; }
+    .po-amt { font-size:11px; font-weight:800; color:var(--rk); }
+    .po-buy { display:inline-flex; align-items:center; justify-content:center; gap:3px; width:100%; padding:7px 4px; border-radius:9px;
+      border:none; cursor:pointer; font-size:12.5px; font-weight:900; color:#4a3400; }
+    .po-buy.buy { background:linear-gradient(180deg,#F0C040,#D4A017); }
+    .po-buy.poor { background:#6b7280; color:#e5e7eb; }
+    .po-buy.disabled { background:#374151; color:#9ca3af; cursor:default; }
+    .po-koban { width:15px; height:15px; object-fit:contain; }
+    .koban-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+    .koban-item { display:flex; flex-direction:column; align-items:center; gap:7px; padding:12px 8px;
+      border-radius:14px; border:2px solid rgba(240,192,64,.5); background:rgba(17,24,39,.7); }
+    .ki-label { font-size:13px; font-weight:900; color:#fff; }
+    .koban-item.bought { opacity:.55; }
+
+    /* ============================================================
+       IMAGE-BASED UI  (Unity移植用：文字以外のUIをスプライト画像に置換)
+       CSSで描いていた枠/ボタン/バー/バッジ等を assets/images の
+       スプライトに差し替える。文字・アイコン絵文字はそのまま上に載る。
+       ============================================================ */
+    /* --- パネル枠（濃紺＋金縁） UI_Panel : 9-slice(border-image)で角を保ち内側に余白を確保 --- */
+    .opp-card, .predict-frame, .build-panel, .result-pop, .steal-summary,
+    .bonus-reward, .card-set, .shop-pack, .debug-panel, .reveal-card,
+    .menu-sheet, .cp-inner,
+    .trigger-card, .raid-log, .bonus-status, .season-tier, .invite-mile,
+    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item {
+      background: transparent !important;
+      border-style: solid !important;
+      border-color: transparent !important;
+      border-image: url("assets/images/UI_Panel.png") 100 fill / 22px / 0 stretch !important;
+      border-width: 22px !important;
+      box-shadow: none !important;
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    }
+    /* 小さめタイル/行は枠を細く（内側の余白を取りすぎない） */
+    .trigger-card, .raid-log, .bonus-status, .season-tier, .invite-mile,
+    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item {
+      border-image-width: 12px !important;
+      border-width: 12px !important;
+    }
+    /* 選択・所持などの状態は縁取りの代わりに金色グローで表現（枠画像を保ったまま） */
+    .steal-card.sel, .steal-card.revealed, .part-card.sel, .build-card.pressed,
+    .bonus-tile.hit, .menu-item:active, .season-tier.on, .invite-mile.reached {
+      filter: drop-shadow(0 0 10px rgba(240,192,64,.85)) !important;
+    }
+    .build-card.poor { filter: grayscale(.3) brightness(.8); }
+
+    /* --- カプセル型（ピル） UI_Pill --- */
+    .coin-pill, .shield-box, .toast, .ghost-label, .ghost-btn,
+    .steal-progress, .gain-banner, .z-next, .pack-tag {
+      background: url("assets/images/UI_Pill.png") center/100% 100% no-repeat !important;
+      border: none !important;
+      box-shadow: none !important;
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+    }
+    /* テキスト系ピルは丸い端に文字が乗らないよう左右に余白 */
+    .toast, .ghost-label, .ghost-btn, .steal-progress, .gain-banner, .z-next, .pack-tag {
+      padding-left: 20px !important; padding-right: 20px !important;
+    }
+    .coin-pill, .shield-box { padding-left: 12px !important; padding-right: 14px !important; }
+
+    /* --- 大ボタン（金/緑/朱） --- */
+    .big-btn { border: none !important; box-shadow: none !important;
+      background: center/100% 100% no-repeat !important;
+      white-space: nowrap;
+      filter: drop-shadow(0 4px 5px rgba(0,0,0,.45)); }
+    /* スティール結果の受け取りボタンは枠内に収める */
+    .steal-summary .big-btn { font-size: 17px; padding: 12px 24px; margin: 10px auto 2px; max-width: 100%; }
+    .big-btn:active:not(:disabled) { transform: translateY(4px); filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+    .gold-btn  { background-image: url("assets/images/Btn_Gold.png")  !important; }
+    .green-btn { background-image: url("assets/images/Btn_Green.png") !important; }
+    .red-btn   { background-image: url("assets/images/Btn_Red.png")   !important; }
+    .big-btn:disabled, .big-btn.disabled { filter: grayscale(.6) brightness(.7); }
+
+    /* --- ロールボタン（丸／手裏剣）＋停止 --- */
+    .roll-btn {
+      background: url("assets/images/Btn_Roll.png") center/100% 100% no-repeat !important;
+      border: none !important;
+      box-shadow: none !important;
+      filter: drop-shadow(0 6px 8px rgba(0,0,0,.5));
+    }
+    .roll-btn:active:not(:disabled) { transform: translateY(5px); box-shadow: none !important;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+    .roll-btn.stop { background-image: url("assets/images/Btn_Roll_Stop.png") !important; }
+    .roll-btn:disabled { filter: grayscale(.55) brightness(.7); }
+
+    /* --- ボトムドックのナビボタン --- */
+    .nav-btn {
+      background: url("assets/images/Btn_Nav.png") center/100% 100% no-repeat !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    .nav-btn:active { background: url("assets/images/Btn_Nav.png") center/100% 100% no-repeat !important;
+      filter: drop-shadow(0 0 8px rgba(240,192,64,.7)); }
+
+    /* --- ベット（ロールポイント）ボタン on/off --- */
+    .bet-btn { background: url("assets/images/Btn_Bet_Off.png") center/100% 100% no-repeat !important;
+      border: none !important; box-shadow: none !important; color: #fde68a; }
+    .bet-btn.on { background-image: url("assets/images/Btn_Bet_On.png") !important; color: #4a3400; }
+
+    /* --- その他ボタン（無料ロール／シーズン受取） --- */
+    .free-roll-btn, .tier-btn.ready {
+      background: url("assets/images/Btn_Green.png") center/100% 100% no-repeat !important;
+      border: none !important; box-shadow: none !important; }
+    .tier-btn { background: url("assets/images/Btn_Bet_Off.png") center/100% 100% no-repeat !important;
+      border: none !important; }
+
+    /* --- バー（エナジー＝金 / レイドHP＝赤） --- */
+    .energy-track, .raid-hpbar {
+      background: url("assets/images/Bar_Track.png") center/100% 100% no-repeat !important;
+      border: none !important; overflow: visible !important; }
+    .energy-fill {
+      background: url("assets/images/Bar_Fill_Gold.png") left center/auto 100% no-repeat !important;
+      background-size: 100% 100% !important; box-shadow: none !important; }
+    .raid-hpfill {
+      background: url("assets/images/Bar_Fill_Red.png") left center/100% 100% no-repeat !important; }
+
+    /* --- 通知バッジ（丸） UI_Badge --- */
+    .nb-badge, .steal-check, .vi-check {
+      background: url("assets/images/UI_Badge.png") center/100% 100% no-repeat !important;
+      border: none !important; box-shadow: none !important; color: #fff !important; }
+
+    /* --- トップバーのアイコンボタン（枠を消して画像アイコンを主役に） --- */
+    .menu-btn, .plus-btn { background: none !important; border: none !important; box-shadow: none !important; }
+    .icon-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .snd-ico { font-size: 18px; line-height: 1; }
+
+    /* --- 画像アイコン（ナビ/メニュー/ステータス/仲間） --- */
+    .nb-ico-img { width: 28px; height: 28px; object-fit: contain; display: block; }
+    .nb-badge-ico { width: 13px; height: 13px; object-fit: contain; vertical-align: -2px; margin-right: 1px; }
+    .sh-ico-img { width: 21px; height: 21px; object-fit: contain; display: block; }
+    .mi-icon-img { width: 32px; height: 32px; object-fit: contain; display: block; margin: 0 auto; }
+    .mate-ico-img { width: 40px; height: 40px; object-fit: contain; display: block; }
+    .clan-mates .mate.you .mate-ico { filter: drop-shadow(0 0 6px #F0C040); }
+
+    /* --- 報酬チップ（シーズン/招待）: 絵文字→画像アイコン --- */
+    .reward-chip { display: inline-flex; align-items: center; gap: 5px; }
+    .reward-ico { width: 20px; height: 20px; object-fit: contain; display: inline-block; vertical-align: middle; }
+    /* --- 村建設カードの建物アイコン（絵文字→建物サムネイル）＋コスト小判 --- */
+    .pc-icon-img { width: 42px; height: 42px; object-fit: contain; display: block; margin: 0 auto 2px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+    .pc-coin-ico { width: 14px; height: 14px; object-fit: contain; vertical-align: -2px; margin-right: 2px; }
+
+    /* --- ボタン押下状態（*_Press スプライトに差し替え） --- */
+    .roll-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Roll_Press.png") !important; }
+    .roll-btn.stop:active:not(:disabled) { background-image: url("assets/images/Btn_Roll_Stop.png") !important; filter: brightness(.8) drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+    .gold-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Gold_Press.png")  !important; }
+    .green-btn:active:not(:disabled), .free-roll-btn:active, .tier-btn.ready:active { background-image: url("assets/images/Btn_Green_Press.png") !important; }
+    .red-btn:active:not(:disabled)   { background-image: url("assets/images/Btn_Red_Press.png")   !important; }
+    .nav-btn:active { background-image: url("assets/images/Btn_Nav_Press.png") !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="vendor/react.production.min.js"></script>
+  <script src="vendor/react-dom.production.min.js"></script>
+  <script src="manifest.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
