@@ -308,9 +308,11 @@
       100%{ transform: rotateX(var(--rxE)) rotateY(var(--ryE)); }
     }
 
-    /* 獲得数字（ダイス上部）: Coin Master本家の大きな獲得表示に倣い、枠なし・数字のみ */
+    /* 獲得数字（対戦相手カード直下）: Coin Master本家の大きな獲得表示に倣い、枠なし・数字のみ */
     .gain-banner {
-      display: flex; align-items: center; gap: 8px;
+      position: relative; z-index: 5;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      align-self: center; margin-top: 6px;
       font-weight: 900; font-size: 30px;
       text-shadow: 0 2px 8px rgba(0,0,0,.75);
       transition: transform .15s;

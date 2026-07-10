@@ -1841,8 +1841,6 @@ function MainRoll({
   }, game.opponent.name)), /*#__PURE__*/React.createElement("div", {
     className: "opp-coins"
   }, "💰 ", fmt(game.opponent.coins))), /*#__PURE__*/React.createElement("div", {
-    className: "dice-area"
-  }, /*#__PURE__*/React.createElement("div", {
     className: "gain-banner " + (gainKey ? 'pop' : ''),
     key: gainKey
   }, /*#__PURE__*/React.createElement("span", {
@@ -1851,6 +1849,8 @@ function MainRoll({
     src: IMG + 'ui/Koban_Small.png',
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   })), /*#__PURE__*/React.createElement("div", {
+    className: "dice-area"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "dice-stage"
   }, /*#__PURE__*/React.createElement("div", {
     className: "dice-row" + (rollAnim === '3d' ? ' d3' : '')
