@@ -565,10 +565,10 @@ function SideRail({ side, items, go, tickets=0, pulseKey=0 }) {
       {items.map(m => (
         <button key={m.screen + (m.screen==='collection' ? ('-'+pulseKey) : '')}
           className={"rail-btn rail-" + m.screen + (m.screen==='collection' && pulseKey ? ' pulse' : '')}
+          title={m.label}
           onClick={()=>{ SFX.tap(); go(m.screen); }}>
           {m.badge==='ticket' && tickets>0 && <span className="nb-badge"><Img src={IMG+'ui/Icon_Ticket.png'} className="nb-badge-ico" fallback={<span>🎟️</span>} />{tickets}</span>}
           <Img src={IMG+m.img} className="rail-ico" fallback={<span className="rail-emoji">{m.emoji}</span>} />
-          <span className="rail-label">{m.label}</span>
         </button>
       ))}
     </div>
@@ -816,6 +816,12 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         </div>
       </div>
 
+      {/* roll point (bet) toggle: タップで×1→×2→×3→×1と循環。消費ロール＆報酬に同倍率。 */}
+      <button className="bet-toggle" disabled={isRolling}
+        onClick={()=>{ SFX.tap(); setBet && setBet(b => (b % 3) + 1); }}>
+        ×{bet} <span className="bt-ico">🎲</span>
+      </button>
+
       {/* energy bar */}
       <div className="energy-wrap">
         <div className="energy-top">
@@ -827,16 +833,6 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         </div>
         <div className="energy-track"><div className="energy-fill" style={{width:pct+'%'}} /></div>
         <div className="energy-timer">次の補充: {refill}</div>
-      </div>
-
-      {/* roll point (bet) selector: ×1〜×3 で消費ロール＆報酬に倍率 */}
-      <div className="bet-bar">
-        <span className="bet-label">ロールポイント</span>
-        {[1,2,3].map(n => (
-          <button key={n} className={"bet-btn " + (bet===n?'on':'')} disabled={isRolling}
-            onClick={()=>setBet && setBet(n)}>×{n}</button>
-        ))}
-        <span className="bet-hint">消費{bet}・報酬×{bet}</span>
       </div>
 
       {/* bottom dock: ロールボタンのみ（遷移先は左右サイドレールへ移動） */}

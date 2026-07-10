@@ -194,7 +194,7 @@
       filter: drop-shadow(0 10px 12px rgba(0,0,0,.45));
       pointer-events: none;
     }
-    /* max-width keeps the row clear of the absolutely-positioned .side-rail (56px wide + 5px offset each side, inner edge 61px).
+    /* max-width keeps the row clear of the absolutely-positioned .side-rail (46px wide + 5px offset each side, inner edge 51px).
        2D演出時の .die は flex-basis で縮小、既定の3D立体ダイスは .dice-row.d3 の --d3（clamp）で縮小し、
        どちらのモードでも狭い画面でサイドレールと重ならないようにする。 */
     .dice-row { position: relative; z-index: 1; display: flex; gap: 18px; align-items: center; justify-content: center; max-width: calc(100% - 140px); }
@@ -249,9 +249,9 @@
 
     /* ===== 3Dダイス（立方体）：小さめ・画面に収まるサイズ。空中は等速→着地で減速、左→右に発射 ===== */
     /* 既定の3D立体ダイス: --d3 で一辺を可変化（62px固定を廃止）。
-       3個＋gap×2 が「画面幅 − レール両側122px − 余裕」に収まるよう clamp で追従させ、
-       広い画面では84pxまで拡大してダイスを主役化する（レビュー指摘B1対応） */
-    .dice-row.d3 { gap: 22px; --d3: clamp(56px, calc((100vw - 192px) / 3), 78px); }
+       3個＋gap×2 が「画面幅 − レール両側106px（46px×2の幅短縮を反映） − 余裕」に収まるよう clamp で追従させ、
+       広い画面では84pxまで拡大してダイスを主役化する（レビュー指摘B1対応。レール小型化に伴いさらに拡大） */
+    .dice-row.d3 { gap: 22px; --d3: clamp(58px, calc((100vw - 176px) / 3), 84px); }
     /* perspective は各スロットに置く（間の要素で3Dが潰れないように） */
     .d3-slot { position: relative; perspective: 760px; perspective-origin: 50% 45%; }
     .d3-slot.bonus { perspective: 1100px; }
@@ -322,8 +322,8 @@
     .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
 
     /* ---------- ENERGY BAR ---------- */
-    /* 左右サイドレール（rail-btn幅56px＋左右5px＝内側端61px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
-    .energy-wrap { position: relative; z-index: 5; padding: 4px 77px 2px; }
+    /* 左右サイドレール（rail-btn幅46px＋左右5px＝内側端51px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
+    .energy-wrap { position: relative; z-index: 5; padding: 4px 60px 2px; }
     .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
     .energy-top b { color: var(--gold-light); font-size: 14px; }
     .energy-right { display: inline-flex; align-items: center; gap: 8px; }
@@ -832,15 +832,16 @@
     .debug-item:active { background: rgba(163,230,53,.25); }
     .debug-item:disabled { opacity: .4; cursor: default; }
     .debug-close { margin-top: 3px; padding: 8px; border-radius: 9px; border: none; background: #334155; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
-    /* ============ ROLL POINT (bet) selector ============ */
-    /* rail-btn幅56px（内側端61px）に合わせ、レール非重複のため左右61px以上確保（余裕あり） */
-    /* ラベル・ヒントは横並びだと拡大したチップと合わせて幅が足りず縦書きに割れてしまうため、中央寄せの独立行にする（flex-basis:100%で改行）。左右paddingは小さくてもチップ・短い中央テキストはサイドレールに被らない。 */
-    .bet-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px; padding: 2px 12px 4px; }
-    .bet-label { font-size: 12px; font-weight: 800; color: #cbd5e1; flex-basis: 100%; text-align: center; white-space: nowrap; }
-    .bet-btn { min-width: 52px; aspect-ratio: 1/1; padding: 5px 8px; border-radius: 10px; border: 2px solid rgba(240,192,64,.45); background: rgba(0,0,0,.4); color: #fde68a; font-weight: 900; font-size: 16px; cursor: pointer; }
-    .bet-btn.on { background: linear-gradient(180deg,#F0C040,#D4A017); color: #4a3400; border-color: #fff6d5; box-shadow: 0 0 10px rgba(240,192,64,.6); }
-    .bet-btn:disabled { opacity: .5; cursor: default; }
-    .bet-hint { font-size: 10.5px; color: #9ca3af; flex-basis: 100%; text-align: center; white-space: nowrap; }
+    /* ============ ROLL POINT (bet) toggle ============ */
+    /* Coin Master本家のスロット直下「X15⚡」ブーストボタンに寄せ、単一トグルに統合（×1→×2→×3→×1と循環）。
+       残りロールバー（.energy-wrap）の直上に近接配置（margin-bottomで4px程度の間隔）。 */
+    .bet-toggle { position: relative; z-index: 6; display: block; margin: 0 auto 4px; width: 90px; height: 36px;
+      background: url("assets/images/ui/Btn_WoodChip_On.png") center/100% 100% no-repeat; border: none;
+      color: #4a3400; font-weight: 900; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 3px;
+      cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .bet-toggle:active { transform: translateY(1px); }
+    .bet-toggle:disabled { opacity: .5; cursor: default; }
+    .bet-toggle .bt-ico { font-size: 15px; }
 
     /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
     .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 10px;
@@ -1004,17 +1005,17 @@
     .card-face .cf-name { font-size:9px; font-weight:700; color:#e5e7eb; text-align:center; line-height:1.1; padding:0 2px; }
     .card-face .cf-goldtag { position:absolute; top:3px; right:3px; font-size:7px; font-weight:900; color:#4a3400; background:#F0C040; padding:1px 4px; border-radius:4px; }
 
-    /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）: 木札／絵馬風（Btn_WoodSquare） ===== */
-    /* rail-btn幅56px（内側端 5+56=61px）に合わせ、.energy-wrap / .bet-bar の左右paddingは 61px 以上を確保すること */
+    /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）: 木札／絵馬風（Btn_WoodSquare）。
+       Coin Master本家に寄せてアイコンのみの小型ボタンに（ラベルは title属性でアクセシビリティのみ確保）。 ===== */
+    /* rail-btn幅46px（内側端 5+46=51px）に合わせ、.energy-wrap の左右paddingは 51px 以上を確保すること */
     .side-rail { position:absolute; z-index:7; top:228px; display:flex; flex-direction:column; gap:6px; }
     .side-rail.left { left:5px; } .side-rail.right { right:5px; }
-    .rail-btn { position:relative; width:56px; aspect-ratio: 1 / 1.05; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
-      padding:9px 4px 7px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
+    .rail-btn { position:relative; width:46px; aspect-ratio: 1 / 1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
+      padding:6px 3px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
       background:url("assets/images/ui/Btn_WoodSquare.png") center/100% 100% no-repeat; }
     .rail-btn:active { transform:translateY(1px); filter:drop-shadow(0 0 7px rgba(240,192,64,.7)); }
-    .rail-ico { width:30px; height:30px; object-fit:contain; }
+    .rail-ico { width:32px; height:32px; object-fit:contain; }
     .rail-emoji { font-size:22px; line-height:1; }
-    .rail-label { font-size:9px; font-weight:900; line-height:1; margin-top:3px; letter-spacing:-.3px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
     .rail-btn .nb-badge { position:absolute; top:-5px; right:-4px; }
 
     /* ===== 常時表示のミニマスコット（装備キャラ・左下の空きスペース）===== */
@@ -1314,11 +1315,6 @@
     }
     .nav-btn:active { background: url("assets/images/ui/Btn_Nav.png") center/100% 100% no-repeat !important;
       filter: drop-shadow(0 0 8px rgba(240,192,64,.7)); }
-
-    /* --- ベット（ロールポイント）ボタン on/off: 木札チップ（Btn_WoodChip_*） --- */
-    .bet-btn { background: url("assets/images/ui/Btn_WoodChip_Off.png") center/100% 100% no-repeat !important;
-      border: none !important; box-shadow: none !important; color: #fde68a; }
-    .bet-btn.on { background-image: url("assets/images/ui/Btn_WoodChip_On.png") !important; color: #4a3400; }
 
     /* --- その他ボタン（無料ロール／シーズン受取） --- */
     .free-roll-btn, .tier-btn.ready {

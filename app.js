@@ -1433,6 +1433,7 @@ function SideRail({
   }, items.map(m => /*#__PURE__*/React.createElement("button", {
     key: m.screen + (m.screen === 'collection' ? '-' + pulseKey : ''),
     className: "rail-btn rail-" + m.screen + (m.screen === 'collection' && pulseKey ? ' pulse' : ''),
+    title: m.label,
     onClick: () => {
       SFX.tap();
       go(m.screen);
@@ -1449,9 +1450,7 @@ function SideRail({
     fallback: /*#__PURE__*/React.createElement("span", {
       className: "rail-emoji"
     }, m.emoji)
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "rail-label"
-  }, m.label))));
+  }))));
 }
 function MainRoll({
   game,
@@ -1867,7 +1866,16 @@ function MainRoll({
   }, "+", fmt(lastGain)), /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'ui/Koban_Small.png',
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
-  }))), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "bet-toggle",
+    disabled: isRolling,
+    onClick: () => {
+      SFX.tap();
+      setBet && setBet(b => b % 3 + 1);
+    }
+  }, "×", bet, " ", /*#__PURE__*/React.createElement("span", {
+    className: "bt-ico"
+  }, "🎲")), /*#__PURE__*/React.createElement("div", {
     className: "energy-wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "energy-top"
@@ -1889,17 +1897,6 @@ function MainRoll({
   })), /*#__PURE__*/React.createElement("div", {
     className: "energy-timer"
   }, "次の補充: ", refill)), /*#__PURE__*/React.createElement("div", {
-    className: "bet-bar"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "bet-label"
-  }, "ロールポイント"), [1, 2, 3].map(n => /*#__PURE__*/React.createElement("button", {
-    key: n,
-    className: "bet-btn " + (bet === n ? 'on' : ''),
-    disabled: isRolling,
-    onClick: () => setBet && setBet(n)
-  }, "×", n)), /*#__PURE__*/React.createElement("span", {
-    className: "bet-hint"
-  }, "消費", bet, "・報酬×", bet)), /*#__PURE__*/React.createElement("div", {
     className: "bottom-dock"
   }, /*#__PURE__*/React.createElement(RollButton, {
     disabled: isRolling || game.rolls < bet,
