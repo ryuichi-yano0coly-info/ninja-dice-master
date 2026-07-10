@@ -293,12 +293,12 @@
     .d3-cube .f-top { filter: brightness(1.05); }
     /* 上に跳ねて落ちる（放物線＋減衰バウンド） */
     @keyframes d3launch {
-      0%  { transform: translateY(0);     animation-timing-function: cubic-bezier(.2,.55,.5,1); }
-      33% { transform: translateY(-74px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
-      62% { transform: translateY(0);     animation-timing-function: cubic-bezier(.3,.5,.5,1); }
-      75% { transform: translateY(-17px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      0%  { transform: translateY(0);      animation-timing-function: cubic-bezier(.2,.55,.5,1); }
+      33% { transform: translateY(-150px); animation-timing-function: cubic-bezier(.55,0,.85,.5); }
+      62% { transform: translateY(0);      animation-timing-function: cubic-bezier(.3,.5,.5,1); }
+      75% { transform: translateY(-34px);  animation-timing-function: cubic-bezier(.55,0,.85,.5); }
       86% { transform: translateY(0); }
-      93% { transform: translateY(-5px); }
+      93% { transform: translateY(-10px); }
       100%{ transform: translateY(0); }
     }
     /* 空中は等速回転→着地の瞬間に一気に減速 */
@@ -308,18 +308,16 @@
       100%{ transform: rotateX(var(--rxE)) rotateY(var(--ryE)); }
     }
 
+    /* 獲得数字（ダイス上部）: Coin Master本家の大きな獲得表示に倣い、枠なし・数字のみ */
     .gain-banner {
       display: flex; align-items: center; gap: 8px;
-      padding: 7px 18px;
-      background: rgba(0,0,0,.5);
-      border: 2px solid var(--gold);
-      border-radius: 999px;
-      font-weight: 900; font-size: 17px;
+      font-weight: 900; font-size: 30px;
+      text-shadow: 0 2px 8px rgba(0,0,0,.75);
       transition: transform .15s;
     }
     .gain-banner.pop { animation: gainPop .4s ease-out; }
     @keyframes gainPop { 0%{ transform: scale(.6); } 55%{ transform: scale(1.18);} 100%{ transform: scale(1);} }
-    .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
+    .gain-banner img { width: 30px; height: 30px; object-fit: contain; }
 
     /* ---------- ENERGY BAR ---------- */
     /* 左右サイドレール（rail-btn幅46px＋左右5px＝内側端51px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
@@ -1259,14 +1257,14 @@
 
     /* --- カプセル型（ピル） UI_Pill --- */
     .toast, .ghost-label, .ghost-btn,
-    .steal-progress, .gain-banner, .z-next, .pack-tag {
+    .steal-progress, .z-next, .pack-tag {
       background: url("assets/images/ui/UI_Pill.png") center/100% 100% no-repeat !important;
       border: none !important;
       box-shadow: none !important;
       -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
     }
     /* テキスト系ピルは丸い端に文字が乗らないよう左右に余白 */
-    .toast, .ghost-label, .ghost-btn, .steal-progress, .gain-banner, .z-next, .pack-tag {
+    .toast, .ghost-label, .ghost-btn, .steal-progress, .z-next, .pack-tag {
       padding-left: 20px !important; padding-right: 20px !important;
     }
     /* --- coin-pill / shield-box: 木札カプセル（Pill_Wood） --- */

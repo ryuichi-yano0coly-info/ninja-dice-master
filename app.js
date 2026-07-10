@@ -1843,6 +1843,14 @@ function MainRoll({
   }, "💰 ", fmt(game.opponent.coins))), /*#__PURE__*/React.createElement("div", {
     className: "dice-area"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "gain-banner " + (gainKey ? 'pop' : ''),
+    key: gainKey
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "gold-text"
+  }, "+", fmt(lastGain)), /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+  })), /*#__PURE__*/React.createElement("div", {
     className: "dice-stage"
   }, /*#__PURE__*/React.createElement("div", {
     className: "dice-row" + (rollAnim === '3d' ? ' d3' : '')
@@ -1856,17 +1864,7 @@ function MainRoll({
     face: f,
     phase: phases[i],
     anim: rollAnim
-  })))), /*#__PURE__*/React.createElement("div", {
-    className: "gain-banner " + (gainKey ? 'pop' : ''),
-    key: gainKey
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "gb-label"
-  }, "今回の獲得"), /*#__PURE__*/React.createElement("span", {
-    className: "gold-text"
-  }, "+", fmt(lastGain)), /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'ui/Koban_Small.png',
-    fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
-  }))), /*#__PURE__*/React.createElement("button", {
+  }))))), /*#__PURE__*/React.createElement("button", {
     className: "bet-toggle",
     disabled: isRolling,
     onClick: () => {

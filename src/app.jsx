@@ -800,19 +800,18 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         <div className="opp-coins">💰 {fmt(game.opponent.coins)}</div>
       </div>
 
-      {/* dice area */}
+      {/* dice area — 獲得数字はダイスの上（Coin Master本家の上部獲得表示に倣い、数字のみ） */}
       <div className="dice-area">
+        <div className={"gain-banner " + (gainKey ? 'pop':'')} key={gainKey}>
+          <span className="gold-text">+{fmt(lastGain)}</span>
+          <Img src={IMG+'ui/Koban_Small.png'} fallback={<span>🪙</span>} />
+        </div>
         <div className="dice-stage">
           <div className={"dice-row" + (rollAnim==='3d' ? ' d3' : '')}>
             {rollAnim==='3d'
               ? dice.map((f,i)=><Die3D key={i} face={f} rollKey={roll3dKey} index={i} />)
               : dice.map((f,i)=><Die key={i} face={f} phase={phases[i]} anim={rollAnim} />)}
           </div>
-        </div>
-        <div className={"gain-banner " + (gainKey ? 'pop':'')} key={gainKey}>
-          <span className="gb-label">今回の獲得</span>
-          <span className="gold-text">+{fmt(lastGain)}</span>
-          <Img src={IMG+'ui/Koban_Small.png'} fallback={<span>🪙</span>} />
         </div>
       </div>
 
