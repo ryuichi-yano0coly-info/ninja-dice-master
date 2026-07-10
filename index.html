@@ -148,19 +148,19 @@
     /* ---------- OPPONENT CARD ---------- */
     .opp-card {
       position: relative; z-index: 5;
-      margin: 10px 12px 0;
+      margin: 6px 10px 0;
       display: flex; align-items: center; gap: 10px;
-      padding: 8px 12px;
+      padding: 5px 10px;
       background: linear-gradient(180deg, rgba(31,42,68,.92), rgba(17,24,39,.92));
       border: 2px solid var(--gold);
       border-radius: 14px;
       box-shadow: 0 4px 12px rgba(0,0,0,.4), inset 0 0 0 1px rgba(240,192,64,.25);
     }
     .opp-avatar {
-      width: 46px; height: 46px; border-radius: 50%;
+      width: 34px; height: 34px; border-radius: 50%;
       background: radial-gradient(circle at 30% 30%, #334155, #0f172a);
       border: 2px solid var(--gold-light);
-      display: grid; place-items: center; font-size: 22px; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 17px; flex-shrink: 0;
       overflow: hidden;
     }
     .opp-avatar .opp-portrait {
@@ -168,30 +168,40 @@
       object-position: 50% 8%; transform: scale(1.55); transform-origin: 50% 0;
     }
     .opp-info { flex: 1; min-width: 0; }
-    .opp-label { font-size: 10px; color: var(--sakura); font-weight: 700; letter-spacing: 1px; }
-    .opp-name { font-size: 15px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .opp-coins { font-size: 13px; font-weight: 700; color: var(--gold-light); }
+    .opp-label { font-size: 9px; color: var(--sakura); font-weight: 700; letter-spacing: 1px; }
+    .opp-name { font-size: 13px; font-weight: 900; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .opp-coins { font-size: 12px; font-weight: 700; color: var(--gold-light); }
 
     /* ---------- DICE AREA ---------- */
     .dice-area {
       position: relative; z-index: 4;
       flex: 1;
       display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 14px;
+      align-items: center; justify-content: flex-end;
+      gap: 16px;
       min-height: 0;
+      padding-bottom: 6px;
     }
     .dice-stage { position: relative; display: grid; place-items: center; }
-    /* max-width keeps the row clear of the absolutely-positioned .side-rail (72px wide + 5px offset each side);
-       .die shrinks via flex-basis so it never overlaps the side UI on narrow viewports. */
-    .dice-row { position: relative; z-index: 1; display: flex; gap: 12px; align-items: center; justify-content: center; max-width: calc(100% - 166px); }
-    /* coin burst BEHIND the dice */
-    .dice-coin-burst { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 300px; height: 300px; object-fit: contain; opacity: 0; z-index: 0; pointer-events: none; }
-    .dice-coin-burst.on { animation: burstAnim .8s ease-out; }
+    /* 余白を上に集約しダイスを画面下寄りに配置することでダイスを主役化する（B案の核）。
+       .dice-stage::before の薄暗い楕円ビネットで視線誘導し、演出（spinning/landed 等）より背後に配置する。
+       （2Dイラストのトレイ枠は3D立体ダイスと馴染まなかったため不採用） */
+    .dice-stage::before {
+      content: ''; position: absolute; z-index: 0;
+      width: min(96%, 380px); aspect-ratio: 2.2 / 1;
+      left: 50%; top: 50%; transform: translate(-50%,-50%);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(5,7,13,.55) 0%, rgba(5,7,13,0) 70%);
+      pointer-events: none;
+    }
+    /* max-width keeps the row clear of the absolutely-positioned .side-rail (56px wide + 5px offset each side, inner edge 61px).
+       2D演出時の .die は flex-basis で縮小、既定の3D立体ダイスは .dice-row.d3 の --d3（clamp）で縮小し、
+       どちらのモードでも狭い画面でサイドレールと重ならないようにする。 */
+    .dice-row { position: relative; z-index: 1; display: flex; gap: 18px; align-items: center; justify-content: center; max-width: calc(100% - 140px); }
     .die {
       position: relative;
-      flex: 0 1 96px;
-      width: 96px; aspect-ratio: 1 / 1; height: auto;
+      flex: 0 1 124px;
+      width: 124px; aspect-ratio: 1 / 1; height: auto;
       display: grid; place-items: center;
       filter: drop-shadow(0 8px 10px rgba(0,0,0,.55));
       transform-origin: center;
@@ -238,7 +248,10 @@
     }
 
     /* ===== 3Dダイス（立方体）：小さめ・画面に収まるサイズ。空中は等速→着地で減速、左→右に発射 ===== */
-    .dice-row.d3 { gap: 44px; }
+    /* 既定の3D立体ダイス: --d3 で一辺を可変化（62px固定を廃止）。
+       3個＋gap×2 が「画面幅 − レール両側122px − 余裕」に収まるよう clamp で追従させ、
+       広い画面では84pxまで拡大してダイスを主役化する（レビュー指摘B1対応） */
+    .dice-row.d3 { gap: 22px; --d3: clamp(60px, calc((100vw - 174px) / 3), 84px); }
     /* perspective は各スロットに置く（間の要素で3Dが潰れないように） */
     .d3-slot { position: relative; perspective: 760px; perspective-origin: 50% 45%; }
     .d3-slot.bonus { perspective: 1100px; }
@@ -254,8 +267,8 @@
     }
     .d3-launch { transform-style: preserve-3d; }
     .d3-tilt { transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(-12deg); }
-    .d3-cube { position: relative; width: 62px; height: 62px; transform-style: preserve-3d;
-      transform: rotateX(-20deg) rotateY(24deg); --d3half: 31px; }
+    .d3-cube { position: relative; width: var(--d3, 62px); height: var(--d3, 62px); transform-style: preserve-3d;
+      transform: rotateX(-20deg) rotateY(24deg); --d3half: calc(var(--d3, 62px) / 2); }
     .d3-cube.bonus { width: 120px; height: 120px; --d3half: 60px; }   /* ボーナスは大きめの金ダイス1個 */
     .d3-face { position: absolute; inset: 0; display: grid; place-items: center;
       background: linear-gradient(155deg,#fbf7ea,#efe6cf 62%,#e2d4b0);
@@ -309,8 +322,8 @@
     .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
 
     /* ---------- ENERGY BAR ---------- */
-    /* 左右サイドレール（rail-btn幅64px＋左右5px＝内側端69px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
-    .energy-wrap { position: relative; z-index: 5; padding: 6px 85px 2px; }
+    /* 左右サイドレール（rail-btn幅56px＋左右5px＝内側端61px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
+    .energy-wrap { position: relative; z-index: 5; padding: 4px 77px 2px; }
     .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
     .energy-top b { color: var(--gold-light); font-size: 14px; }
     .energy-right { display: inline-flex; align-items: center; gap: 8px; }
@@ -820,9 +833,9 @@
     .debug-item:disabled { opacity: .4; cursor: default; }
     .debug-close { margin-top: 3px; padding: 8px; border-radius: 9px; border: none; background: #334155; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
     /* ============ ROLL POINT (bet) selector ============ */
-    /* rail-btn幅64px（内側端69px）に合わせ、レール非重複のため左右85px確保（余裕あり） */
+    /* rail-btn幅56px（内側端61px）に合わせ、レール非重複のため左右61px以上確保（余裕あり） */
     /* ラベル・ヒントは横並びだと拡大したチップと合わせて幅が足りず縦書きに割れてしまうため、中央寄せの独立行にする（flex-basis:100%で改行）。左右paddingは小さくてもチップ・短い中央テキストはサイドレールに被らない。 */
-    .bet-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px 8px; padding: 2px 12px 6px; }
+    .bet-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px; padding: 2px 12px 4px; }
     .bet-label { font-size: 12px; font-weight: 800; color: #cbd5e1; flex-basis: 100%; text-align: center; white-space: nowrap; }
     .bet-btn { min-width: 52px; aspect-ratio: 1/1; padding: 5px 8px; border-radius: 10px; border: 2px solid rgba(240,192,64,.45); background: rgba(0,0,0,.4); color: #fde68a; font-weight: 900; font-size: 16px; cursor: pointer; }
     .bet-btn.on { background: linear-gradient(180deg,#F0C040,#D4A017); color: #4a3400; border-color: #fff6d5; box-shadow: 0 0 10px rgba(240,192,64,.6); }
@@ -830,7 +843,7 @@
     .bet-hint { font-size: 10.5px; color: #9ca3af; flex-basis: 100%; text-align: center; white-space: nowrap; }
 
     /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
-    .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 16px;
+    .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 10px;
       pointer-events: none; }   /* 全幅バーがタップを奪わないよう透過。ロールボタンだけ受ける */
     .bottom-dock .roll-zone { padding: 0; margin: 0 4px; pointer-events: auto; }
     .nav-btn {
@@ -992,16 +1005,16 @@
     .card-face .cf-goldtag { position:absolute; top:3px; right:3px; font-size:7px; font-weight:900; color:#4a3400; background:#F0C040; padding:1px 4px; border-radius:4px; }
 
     /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）: 木札／絵馬風（Btn_WoodSquare） ===== */
-    /* rail-btn幅64px（内側端 5+64=69px）に合わせ、.energy-wrap / .bet-bar の左右paddingは 85px 以上を確保すること */
-    .side-rail { position:absolute; z-index:7; top:180px; display:flex; flex-direction:column; gap:8px; }
+    /* rail-btn幅56px（内側端 5+56=61px）に合わせ、.energy-wrap / .bet-bar の左右paddingは 61px 以上を確保すること */
+    .side-rail { position:absolute; z-index:7; top:228px; display:flex; flex-direction:column; gap:6px; }
     .side-rail.left { left:5px; } .side-rail.right { right:5px; }
-    .rail-btn { position:relative; width:64px; aspect-ratio: 1 / 1.05; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
+    .rail-btn { position:relative; width:56px; aspect-ratio: 1 / 1.05; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
       padding:9px 4px 7px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
       background:url("assets/images/ui/Btn_WoodSquare.png") center/100% 100% no-repeat; }
     .rail-btn:active { transform:translateY(1px); filter:drop-shadow(0 0 7px rgba(240,192,64,.7)); }
-    .rail-ico { width:34px; height:34px; object-fit:contain; }
+    .rail-ico { width:30px; height:30px; object-fit:contain; }
     .rail-emoji { font-size:22px; line-height:1; }
-    .rail-label { font-size:10px; font-weight:900; line-height:1; margin-top:3px; letter-spacing:-.3px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
+    .rail-label { font-size:9px; font-weight:900; line-height:1; margin-top:3px; letter-spacing:-.3px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
     .rail-btn .nb-badge { position:absolute; top:-5px; right:-4px; }
 
     /* ===== 常時表示のミニマスコット（装備キャラ・左下の空きスペース）===== */
