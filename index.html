@@ -324,14 +324,14 @@
     /* ---------- ENERGY BAR ---------- */
     /* 左右サイドレール（rail-btn幅46px＋左右5px＝内側端51px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
     .energy-wrap { position: relative; z-index: 5; padding: 4px 60px 2px; }
-    .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
-    .energy-top b { color: var(--gold-light); font-size: 14px; }
+    .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-weight: 700; color: #e5e7eb; margin-bottom: 5px; }
+    .energy-top b { color: var(--gold-light); font-size: 17px; }
     .energy-right { display: inline-flex; align-items: center; gap: 8px; }
-    .free-roll-btn { background: linear-gradient(180deg,#34d399,#059669); border: 1.5px solid #bbf7d0; color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+    .free-roll-btn { background: linear-gradient(180deg,#34d399,#059669); border: 1.5px solid #bbf7d0; color: #fff; font-size: 11.5px; font-weight: 800; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
     .free-roll-btn:active { transform: translateY(1px); }
     .energy-track {
-      height: 12px; border-radius: 999px;
-      background: rgba(0,0,0,.5); border: 1.5px solid rgba(212,160,23,.5);
+      height: 24px; border-radius: 999px;
+      background: rgba(0,0,0,.5); border: 2px solid rgba(212,160,23,.5);
       overflow: hidden;
     }
     .energy-fill {
@@ -340,7 +340,7 @@
       box-shadow: 0 0 8px rgba(240,192,64,.7);
       transition: width .4s ease;
     }
-    .energy-timer { text-align: right; font-size: 10.5px; color: #9ca3af; margin-top: 3px; }
+    .energy-timer { text-align: right; font-size: 12px; color: #9ca3af; margin-top: 3px; }
 
     /* ---------- ROLL BUTTON ---------- */
     .roll-zone { position: relative; z-index: 5; padding: 6px 0 20px; display: flex; flex-direction: column; align-items: center; }
@@ -835,13 +835,13 @@
     /* ============ ROLL POINT (bet) toggle ============ */
     /* Coin Master本家のスロット直下「X15⚡」ブーストボタンに寄せ、単一トグルに統合（×1→×2→×3→×1と循環）。
        残りロールバー（.energy-wrap）の直上に近接配置（margin-bottomで4px程度の間隔）。 */
-    .bet-toggle { position: relative; z-index: 6; display: block; margin: 0 auto 4px; width: 90px; height: 36px;
+    .bet-toggle { position: relative; z-index: 6; display: block; margin: 0 auto 6px; width: 132px; height: 54px;
       background: url("assets/images/ui/Btn_WoodChip_On.png") center/100% 100% no-repeat; border: none;
-      color: #4a3400; font-weight: 900; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 3px;
+      color: #4a3400; font-weight: 900; font-size: 22px; display: flex; align-items: center; justify-content: center; gap: 5px;
       cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .bet-toggle:active { transform: translateY(1px); }
     .bet-toggle:disabled { opacity: .5; cursor: default; }
-    .bet-toggle .bt-ico { font-size: 15px; }
+    .bet-toggle .bt-ico { font-size: 22px; }
 
     /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
     .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 10px;
