@@ -552,7 +552,7 @@ const SIDE_LEFT = [
   { screen:'castle',     img:'Icon_Village.png', emoji:'🏯', label:'村建設' },
   { screen:'characters', img:'Char_maneki_1.png', emoji:'🥷', label:'仲間' },
   { screen:'collection', img:'Icon_Card.png',    emoji:'📖', label:'カード' },
-  { screen:'clan',       img:'Icon_Clan.png',    emoji:'🗡️', label:'一族', badge:'ticket' },
+  { screen:'clan',       img:'Icon_Clan.png',    emoji:'🗡️', label:'討伐', badge:'ticket' },
 ];
 const SIDE_RIGHT = [
   { screen:'shop',   img:'Icon_Shop.png',   emoji:'🛒', label:'商店' },
@@ -575,7 +575,7 @@ function SideRail({ side, items, go, tickets=0, pulseKey=0 }) {
   );
 }
 
-function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZorume, onCardDrop, dropCard, onMenu, onShop, tickets, bet=1, setBet, night, onToggleNight, auto, setAuto, rollAnim='toss', onToggleRollAnim, paused=false, equipped=null, freeRollChance=0, cardDropBonus=0, onResetShop, onRerollShop }) {
+function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZorume, onCardDrop, dropCard, onMenu, onShop, tickets, bet=1, setBet, night, onToggleNight, auto, setAuto, rollAnim='toss', onToggleRollAnim, paused=false, equipped=null, freeRollChance=0, cardDropBonus=0, onResetShop, onRerollShop, onDebugTickets }) {
   const freeRollRef = useRef(freeRollChance); freeRollRef.current = freeRollChance;   // 招き猫系：確率で無料ロール
   const cardBonusRef = useRef(cardDropBonus); cardBonusRef.current = cardDropBonus;   // だるま：カード排出率+
   const [coinSpray, setCoinSpray] = useState(0);     // コイン噴き上げ演出のキー（0=非表示）
@@ -868,6 +868,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
             </button>}
           {onRerollShop && <button className="debug-item" onClick={()=>{ onRerollShop(); }}>🛒 ショップ再ロール（4種入替）</button>}
           {onResetShop && <button className="debug-item" onClick={()=>{ onResetShop(); }}>🛒 ショップ購入リセット</button>}
+          {onDebugTickets && <button className="debug-item" onClick={()=>{ onDebugTickets(); }}>🎟️ レイドチケット +5</button>}
           <button className="debug-close" onClick={()=>setShowDebug(false)}>閉じる</button>
         </div>}
     </div>
@@ -2066,8 +2067,8 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
                   <div className="po-face">
                     <Img src={charThumb(id)} className="po-img" fallback={<span style={{fontSize:34}}>🧙</span>} />
                     <span className="char-rank-tag" style={{ background:rk.color }}>{rk.short}</span>
-                    {unlocked && <span className="po-owned-badge">✅ 解放済 Lv{lv}</span>}
                   </div>
+                  {unlocked && <span className="po-owned-badge">✅ 解放済 Lv{lv}</span>}
                   <div className="po-name">{ch.name}</div>
                   <div className="po-amt">{unlocked ? `強化かけら +${price.pieces}` : `かけら +${price.pieces}`}</div>
                   <button className={"po-buy " + (disabled?'disabled':(poor?'poor':'buy'))} disabled={disabled}
@@ -2296,11 +2297,29 @@ function ShieldOverlay({ onDone }) {
 function App() {
   const [coins, setCoins] = useState(241000);
   const [shields, setShields] = useState(2);
-  const [stage, setStage] = useState(parseInt(new URLSearchParams(window.location.search).get('stg'),10) || 1);
-  // 村の建築状況はApp側で保持（建築画面を離れて戻ってもリセットしない）
-  const [castleVillage, setCastleVillage] = useState(() =>
-    themedVillage(parseInt(new URLSearchParams(window.location.search).get('stg'),10) || 1,
-      { max: new URLSearchParams(window.location.search).has('castleclear') }));
+  const [stage, setStage] = useState(() => {
+    const q = parseInt(new URLSearchParams(window.location.search).get('stg'), 10);
+    if (q) return q;
+    return lsGet('ndm_stage', 1);
+  });
+  useEffect(() => { lsSet('ndm_stage', stage); }, [stage]);
+  // 村の建築状況はApp側で保持（建築画面を離れて戻ってもリセットしない）＆ localStorageに建物レベルのみ永続化
+  const [castleVillage, setCastleVillage] = useState(() => {
+    const qs = new URLSearchParams(window.location.search);
+    const qStage = parseInt(qs.get('stg'), 10);
+    const useQuery = !!qStage || qs.has('castleclear');
+    const st = qStage || lsGet('ndm_stage', 1);
+    const base = themedVillage(st, { max: qs.has('castleclear') });
+    if (useQuery) return base;   // URLパラメータ指定時は保存データを無視
+    const saved = lsGet('ndm_village', null);   // { stage, levels: {id: level} }
+    if (saved && saved.stage === st && saved.levels) {
+      return base.map(it => ({ ...it, level: Math.min(saved.levels[it.id] ?? it.level, it.stages.length - 1) }));
+    }
+    return base;
+  });
+  useEffect(() => {
+    lsSet('ndm_village', { stage, levels: Object.fromEntries(castleVillage.map(it => [it.id, it.level])) });
+  }, [castleVillage, stage]);
   const [rolls, setRolls] = useState(50);
   const [rollsMax] = useState(50);
   const [opponent, setOpponent] = useState(() => {
@@ -2684,7 +2703,8 @@ function App() {
       {screen==='main' && <MainRoll game={game} addCoins={addCoins} grantShields={grantShields} grantRolls={grantRolls} showToast={showToast} go={go} onZorume={onZorume} onCardDrop={onCardDrop} dropCard={dropCardSilent} onShop={()=>go('shop')} tickets={tickets} bet={bet} setBet={setBet} night={night} onToggleNight={()=>setNight(n=>!n)} auto={auto} setAuto={setAuto} rollAnim={rollAnim} onToggleRollAnim={toggleRollAnim}
         paused={!!multFx || shieldFx || !!zorumeFace} equipped={equippedChar}
         freeRollChance={eff.freeRollChance} cardDropBonus={eff.cardDropBonus}
-        onResetShop={debugResetShop} onRerollShop={debugRerollShop} />}
+        onResetShop={debugResetShop} onRerollShop={debugRerollShop}
+        onDebugTickets={()=>{ grantTickets(5); showToast('🎟️ チケット +5（デバッグ）'); }} />}
       {screen==='bonus' && <BonusRoll trigger={flow.trigger} stage={stage} bet={bet} onComplete={onBonusComplete} />}
       {screen==='attackSelect' && <AttackSelect opponent={opponent} bonusResult={flow.bonusResult} stage={stage} ignoreShield={eff.ignoreShield} onCancel={()=>go('main')} onResolve={onAttackResolve} />}
       {screen==='attackResult' && <AttackResult result={flow.attackResult} onNext={onAttackNext} opponentName={opponent.name} />}

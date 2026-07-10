@@ -801,11 +801,15 @@
       font-size: 19px; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,.5);
     }
     .debug-panel {
-      position: absolute; top: 150px; right: 8px; z-index: 51;
+      position: absolute; top: 80px; right: 8px; z-index: 51;
       width: 214px; background: rgba(10,14,25,.97); border: 2px solid #a3e635;
       border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 6px;
       box-shadow: 0 10px 28px rgba(0,0,0,.65);
+      /* ボタンが増えても画面下（ボトムナビ）にはみ出さないよう、収まらない分は内部スクロール */
+      max-height: calc(100% - 170px); overflow-y: auto;
+      overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     }
+    .debug-item, .debug-close { flex-shrink: 0; }
     .debug-head { font-size: 12px; font-weight: 800; color: #a3e635; text-align: center; margin-bottom: 2px; letter-spacing: .5px; }
     .debug-item {
       text-align: left; padding: 9px 11px; border-radius: 9px;
@@ -1038,6 +1042,8 @@
 
     /* clan raid */
     .raid-body { position:relative; z-index:5; flex:1; display:flex; flex-direction:column; align-items:center; padding:6px 14px 18px; overflow-y:auto; }
+    /* 低い画面で子要素が flex-shrink で押し潰れる（枠だけ残って文字がはみ出す）のを防ぎ、あふれた分はスクロールさせる */
+    .raid-body > * { flex-shrink: 0; }
     .raid-title { font-size:20px; font-weight:900; color:#fca5a5; text-shadow:0 2px 6px #000; margin:4px 0 8px; }
     .raid-boss { position:relative; display:grid; place-items:center; margin:4px 0; }
     .raid-castle { width:190px; object-fit:contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
@@ -1147,10 +1153,12 @@
       border-radius:14px; border:2px solid var(--rk); background:rgba(17,24,39,.8); text-align:center; }
     .piece-offer.bought { opacity:.55; }
     .piece-offer.maxed { opacity:.55; }
-    .po-owned-badge { position:absolute; bottom:-4px; left:50%; transform:translateX(-50%);
-      white-space:nowrap; padding:1px 6px; border-radius:8px; font-size:9.5px; font-weight:900;
-      color:#052e16; background:linear-gradient(180deg,#86efac,#22c55e); border:1px solid rgba(255,255,255,.55);
-      box-shadow:0 1px 3px rgba(0,0,0,.4); }
+    /* .po-face（円形・overflow:hidden）の外＝.piece-offer 直下（flex通常フロー）に置くことで
+       円によるクリップを回避する。position:absolute にすると gap 分の余白が潰れて po-name と重なる
+       ため、char-pending-badge と同様に通常フローの要素として配置する */
+    .po-owned-badge { margin-top:-3px; white-space:nowrap; padding:1px 6px; border-radius:8px;
+      font-size:9.5px; font-weight:900; color:#052e16; background:linear-gradient(180deg,#86efac,#22c55e);
+      border:1px solid rgba(255,255,255,.55); box-shadow:0 1px 3px rgba(0,0,0,.4); }
     .po-face { position:relative; width:66px; height:66px; border-radius:50%; display:grid; place-items:center; overflow:hidden;
       background:radial-gradient(circle at 50% 35%, rgba(255,255,255,.12), rgba(0,0,0,.4)); border:2px solid var(--rk); }
     .po-img { width:112%; height:112%; object-fit:contain; }
