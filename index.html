@@ -178,20 +178,20 @@
       flex: 1;
       display: flex; flex-direction: column;
       align-items: center; justify-content: flex-end;
-      gap: 16px;
+      gap: 34px;   /* 台座がダイス下に約42pxはみ出すため、獲得バナーが台座前面に被らない間隔を確保 */
       min-height: 0;
       padding-bottom: 6px;
     }
     .dice-stage { position: relative; display: grid; place-items: center; }
     /* 余白を上に集約しダイスを画面下寄りに配置することでダイスを主役化する（B案の核）。
-       .dice-stage::before の薄暗い楕円ビネットで視線誘導し、演出（spinning/landed 等）より背後に配置する。
-       （2Dイラストのトレイ枠は3D立体ダイスと馴染まなかったため不採用） */
+       .dice-stage::before の3Dレンダー調の木製台座（UI_DicePodium.png）にダイスが載って見えるよう、
+       ダイス下端に重ねて配置し、演出（spinning/landed 等）より背後に描画する。 */
     .dice-stage::before {
       content: ''; position: absolute; z-index: 0;
-      width: min(96%, 380px); aspect-ratio: 2.2 / 1;
-      left: 50%; top: 50%; transform: translate(-50%,-50%);
-      border-radius: 50%;
-      background: radial-gradient(ellipse, rgba(5,7,13,.55) 0%, rgba(5,7,13,0) 70%);
+      width: calc(100% + 24px); aspect-ratio: 1536 / 512;
+      left: 50%; bottom: -42px; transform: translateX(-50%);
+      background: url("assets/images/ui/UI_DicePodium.png") center/100% 100% no-repeat;
+      filter: drop-shadow(0 10px 12px rgba(0,0,0,.45));
       pointer-events: none;
     }
     /* max-width keeps the row clear of the absolutely-positioned .side-rail (56px wide + 5px offset each side, inner edge 61px).
