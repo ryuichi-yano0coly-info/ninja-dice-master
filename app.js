@@ -3159,6 +3159,34 @@ const dropRandomCard = (goldChance = 0.12) => {
    CHARACTERS（仲間）— ピース100枚で入手、1体だけ装備してパッシブ発動
    ============================================================ */
 const CHAR_PIECE_GOAL = 100; // 入手に必要なピース数
+
+// --- レベル/攻撃力（討伐戦：ピース購入でLv5まで強化） ---
+const CHAR_MAX_LEVEL = 5;
+const RAID_LEVEL_MULT = {
+  1: 1,
+  2: 1.3,
+  3: 1.6,
+  4: 2.0,
+  5: 2.5
+};
+const RAID_ATK_BASE = {
+  normal: 12,
+  rare: 20,
+  epic: 32,
+  legend: 48
+};
+const attackPower = (id, level = 1) => {
+  const c = CHAR_BY_ID[id];
+  if (!c) return 0;
+  return Math.round(RAID_ATK_BASE[c.rank] * (RAID_LEVEL_MULT[level] || 1));
+};
+const CHAR_LEVEL_COST = {
+  normal: [30, 50, 70, 100],
+  rare: [20, 40, 50, 70],
+  epic: [10, 20, 30, 40],
+  legend: [5, 10, 20, 30]
+};
+const charLevelCost = (rank, level) => CHAR_LEVEL_COST[rank][level - 1];
 const CHAR_RANKS = {
   normal: {
     label: 'ノーマル',
@@ -3413,13 +3441,27 @@ const lsSet = (k, v) => {
     localStorage.setItem(k, JSON.stringify(v));
   } catch (e) {}
 };
-// 装備キャラ（id）から有効な effect を導出
-const activeEffect = equippedId => {
+// 装備キャラ（id）から有効な effect を導出。レベルが上がるほど効果が強化される
+// （乗算系effectは基準倍率からの伸び幅を、加算系effectはそのまま倍率で拡大）。
+const EFF_MULT_KEYS = ['coinMult', 'stealMult', 'attackMult'];
+const EFF_ADD_KEYS = ['buildDiscount', 'freeRollChance', 'pieceBonus', 'cardDropBonus', 'jackpotBonus'];
+const activeEffect = (equippedId, level = 1) => {
   const c = equippedId && CHAR_BY_ID[equippedId];
-  return c ? {
-    ...NO_EFFECT,
+  if (!c) return NO_EFFECT;
+  const mult = RAID_LEVEL_MULT[level] || 1;
+  const out = {
     ...c.effect
-  } : NO_EFFECT;
+  };
+  EFF_MULT_KEYS.forEach(k => {
+    if (out[k] != null) out[k] = 1 + (out[k] - 1) * mult;
+  });
+  EFF_ADD_KEYS.forEach(k => {
+    if (out[k] != null) out[k] = out[k] * mult;
+  });
+  return {
+    ...NO_EFFECT,
+    ...out
+  };
 };
 // ピース1口の枚数。宝箱=box / ジャックポット=jackpot。レジェンドは少なめ。
 const piecesFor = (rank, source) => {
@@ -3623,7 +3665,9 @@ function CharactersScreen({
   equipped,
   onEquip,
   onBack,
-  stage
+  stage,
+  charLevels = {},
+  onLevelUp
 }) {
   const ranks = ['normal', 'rare', 'epic', 'legend'];
   const eqChar = equipped && CHAR_BY_ID[equipped];
@@ -3718,7 +3762,24 @@ function CharactersScreen({
       }, locked ? `ステージ${c.unlockStage}で解放` : c.desc), owned && /*#__PURE__*/React.createElement("button", {
         className: "char-eq-btn " + (on ? 'on' : ''),
         onClick: () => onEquip(c.id)
-      }, on ? '装備中 ✓' : '装備する'), lockBadge && /*#__PURE__*/React.createElement("div", {
+      }, on ? '装備中 ✓' : '装備する'), owned && (() => {
+        const lv = charLevels[c.id] || 1;
+        const isMax = lv >= CHAR_MAX_LEVEL;
+        const cost = isMax ? 0 : charLevelCost(c.rank, lv);
+        const canLvUp = !isMax && pieces - CHAR_PIECE_GOAL >= cost;
+        return /*#__PURE__*/React.createElement("div", {
+          className: "char-lv-block"
+        }, /*#__PURE__*/React.createElement("span", {
+          className: "char-lv-badge"
+        }, "Lv", lv, "/", CHAR_MAX_LEVEL), isMax ? /*#__PURE__*/React.createElement("button", {
+          className: "char-lvup-btn max",
+          disabled: true
+        }, "MAX") : /*#__PURE__*/React.createElement("button", {
+          className: "char-lvup-btn" + (canLvUp ? '' : ' disabled'),
+          disabled: !canLvUp,
+          onClick: () => onLevelUp && onLevelUp(c.id)
+        }, "レベルアップ（🧩", cost, "）"));
+      })(), lockBadge && /*#__PURE__*/React.createElement("div", {
         className: "char-pending-badge"
       }, "ステージ", c.unlockStage, " 解放待ち"), showProg && /*#__PURE__*/React.createElement("div", {
         className: "char-prog"
@@ -3738,32 +3799,99 @@ function CharactersScreen({
 }
 
 /* ============================================================
-   CLAN RAID — 一族＋協力ボス
+   CLAN RAID — 一族＋協力ボス（10体ローテーション＋討伐専用編成）
    ============================================================ */
-const CLAN_MATES = [{
-  name: '花丸',
-  emoji: '🦊',
-  img: 'Chara_NinjaFox.png'
+// --- 討伐戦ボス（10体、村ステージSTAGE_THEMESと1:1対応） ---
+const RAID_BOSSES = [{
+  n: 1,
+  theme: 'himeji',
+  name: '姫路の妖魔',
+  img: 'Boss_himeji.png',
+  bg: 'BG_Raid_himeji.png',
+  emoji: '🏯'
 }, {
-  name: '黒助',
-  emoji: '🐕',
-  img: 'Chara_NinjaDog.png'
+  n: 2,
+  theme: 'windsor',
+  name: '鋼鉄の騎士王',
+  img: 'Boss_windsor.png',
+  bg: 'BG_Raid_windsor.png',
+  emoji: '🛡️'
 }, {
-  name: '参乃',
-  emoji: '🐒',
-  img: 'Chara_NinjaMonkey.png'
+  n: 3,
+  theme: 'tajmahal',
+  name: '白亜の魔宮神',
+  img: 'Boss_tajmahal.png',
+  bg: 'BG_Raid_tajmahal.png',
+  emoji: '🕌'
 }, {
-  name: '鉄丸',
-  emoji: '🤖',
-  img: 'Chara_RoboNinja.png'
+  n: 4,
+  theme: 'egypt',
+  name: '黄金のファラオ',
+  img: 'Boss_egypt.png',
+  bg: 'BG_Raid_egypt.png',
+  emoji: '🐫'
+}, {
+  n: 5,
+  theme: 'china',
+  name: '紫禁の龍帝',
+  img: 'Boss_china.png',
+  bg: 'BG_Raid_china.png',
+  emoji: '🐉'
+}, {
+  n: 6,
+  theme: 'greece',
+  name: '神殿の巨神',
+  img: 'Boss_greece.png',
+  bg: 'BG_Raid_greece.png',
+  emoji: '🏛️'
+}, {
+  n: 7,
+  theme: 'aztec',
+  name: '石造の石神',
+  img: 'Boss_aztec.png',
+  bg: 'BG_Raid_aztec.png',
+  emoji: '🗿'
+}, {
+  n: 8,
+  theme: 'russia',
+  name: '氷雪の熊将',
+  img: 'Boss_russia.png',
+  bg: 'BG_Raid_russia.png',
+  emoji: '🐻'
+}, {
+  n: 9,
+  theme: 'arabia',
+  name: '灼熱の魔神',
+  img: 'Boss_arabia.png',
+  bg: 'BG_Raid_arabia.png',
+  emoji: '🧞'
+}, {
+  n: 10,
+  theme: 'dragon',
+  name: '覇龍',
+  img: 'Boss_dragon.png',
+  bg: 'BG_Raid_dragon.png',
+  emoji: '🐲'
 }];
-// 城HPが75/50/25%を下回るたびに中間報酬（0%＝撃破の報酬は claim() 側で別途付与）
-const RAID_MILESTONE_REWARD = {
-  75: 50000,
-  50: 100000,
-  25: 150000
-};
+const RAID_MAX_BOSS = RAID_BOSSES.length; // = MAX_STAGE = 10
+
+// --- ボス撃破報酬カーブ ---
+const raidBossCoin = n => 200000 + 300000 * (n - 1); // boss1=200k … boss10=2.9M
+const raidBossRolls = n => 20 + 5 * n; // 25 … 70
 const RAID_MILESTONES = [75, 50, 25];
+const RAID_MILESTONE_FRAC = {
+  75: 0.08,
+  50: 0.10,
+  25: 0.12
+};
+const raidMilestoneReward = (n, m) => Math.round(raidBossCoin(n) * RAID_MILESTONE_FRAC[m]);
+
+// --- ダメージ計算 ---
+const RAID_DMG_MIN = 3,
+  RAID_DMG_MAX = 60;
+const raidBossTough = n => 2.5 + (n - 1) * 1.4;
+const raidDamagePct = (partyAP, n) => Math.max(RAID_DMG_MIN, Math.min(RAID_DMG_MAX, Math.round((partyAP + 6) / raidBossTough(n))));
+const RAID_PARTY_MAX = 4;
 function ClanRaidScreen({
   onBack,
   addCoins,
@@ -3772,59 +3900,83 @@ function ClanRaidScreen({
   tickets,
   spendTicket,
   raid,
-  setRaid
+  setRaid,
+  raidParty = [],
+  charLevels = {},
+  stage,
+  onEditParty
 }) {
   const {
+    boss,
     hp,
-    defeated,
-    claimed,
-    log,
-    milestonesHit = []
+    awaitingUnlock,
+    allDone,
+    claimedBosses = [],
+    milestonesHit = [],
+    log
   } = raid; // レイド進行はApp保持（再入場でリセットしない）
-
-  useEffect(() => {
-    if (hp <= 0 && !defeated) setRaid(r => ({
-      ...r,
-      defeated: true,
-      log: '🎉 妖魔城 撃破！一族の勝利！'
-    }));
-  }, [hp, defeated, setRaid]);
+  const bossDef = RAID_BOSSES[boss - 1] || RAID_BOSSES[0];
+  const defeated = hp <= 0;
+  const partyAP = raidParty.reduce((s, id) => s + attackPower(id, charLevels[id] || 1), 0);
+  const claimedThis = claimedBosses.includes(boss);
   const attack = () => {
-    if (defeated) return;
+    if (allDone || awaitingUnlock || defeated) return;
     if (tickets <= 0) {
       showToast('レイドチケット🎟️が必要');
       return;
     }
+    if (!raidParty.length) {
+      showToast('討伐編成を組もう');
+      return;
+    }
     spendTicket();
-    const dmg = 6 + Math.floor(Math.random() * 8);
+    const dmg = raidDamagePct(partyAP, boss);
     const nextHp = Math.max(0, hp - dmg);
     const newlyHit = RAID_MILESTONES.filter(m => hp > m && nextHp <= m && !milestonesHit.includes(m));
+    let bonus = 0;
     if (newlyHit.length) {
-      const bonus = newlyHit.reduce((s, m) => s + RAID_MILESTONE_REWARD[m], 0);
+      bonus = newlyHit.reduce((s, m) => s + raidMilestoneReward(boss, m), 0);
       addCoins(bonus);
-      showToast(`🏯 城HP ${newlyHit[newlyHit.length - 1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
+      showToast(`🏯 ボスHP ${newlyHit[newlyHit.length - 1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
     }
     setRaid(r => ({
       ...r,
       hp: nextHp,
-      log: `🥷 あなたが ${dmg}% 削った！`,
+      log: nextHp <= 0 ? `🎉 ${bossDef.name} 撃破！一族の勝利！` : `🥷 一族が ${dmg}% 削った！`,
       milestonesHit: [...(r.milestonesHit || []), ...newlyHit]
     }));
   };
   const claim = () => {
-    if (claimed) return;
-    setRaid(r => ({
-      ...r,
-      claimed: true
-    }));
-    addCoins(500000);
-    grantRolls && grantRolls(30);
-    showToast('🎲 ロール +30 獲得！');
+    if (claimedBosses.includes(boss)) return;
+    addCoins(raidBossCoin(boss));
+    grantRolls && grantRolls(raidBossRolls(boss));
+    showToast(`🎲 ロール +${raidBossRolls(boss)} 獲得！`);
+    setRaid(r => {
+      const cb = [...r.claimedBosses, boss];
+      if (boss >= RAID_MAX_BOSS) return {
+        ...r,
+        claimedBosses: cb,
+        allDone: true
+      };
+      if (stage >= boss + 1) return {
+        ...r,
+        claimedBosses: cb,
+        boss: boss + 1,
+        hp: 100,
+        milestonesHit: [],
+        log: `ボス${boss + 1}が出現した！`
+      };
+      return {
+        ...r,
+        claimedBosses: cb,
+        awaitingUnlock: true
+      };
+    });
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "screen sheet-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Attack.png")`
+      backgroundImage: `url("${IMG}${bossDef.bg}")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "result-dim"
@@ -3839,21 +3991,23 @@ function ClanRaidScreen({
     className: "raid-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "raid-title"
-  }, "妖魔城 討伐戦"), /*#__PURE__*/React.createElement("div", {
+  }, "討伐戦 — ボス ", boss, "/", RAID_MAX_BOSS), /*#__PURE__*/React.createElement("div", {
     className: "raid-boss"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Boss_Castle.png',
+    src: IMG + bossDef.img,
     className: "raid-castle " + (defeated ? 'broken' : ''),
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 110
       }
-    }, "🏯")
+    }, bossDef.emoji)
   }), defeated && /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'Effect_Attack.png',
     className: "raid-fx",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), /*#__PURE__*/React.createElement("div", {
+    className: "raid-boss-name"
+  }, bossDef.name), /*#__PURE__*/React.createElement("div", {
     className: "raid-hpbar-frame"
   }, /*#__PURE__*/React.createElement("div", {
     className: "raid-hpbar"
@@ -3864,44 +4018,165 @@ function ClanRaidScreen({
     }
   }), /*#__PURE__*/React.createElement("span", {
     className: "raid-hptext"
-  }, "城HP ", hp, "%"))), /*#__PURE__*/React.createElement("div", {
+  }, "ボスHP ", hp, "%"))), /*#__PURE__*/React.createElement("div", {
     className: "raid-log"
   }, log), /*#__PURE__*/React.createElement("div", {
-    className: "clan-mates"
-  }, CLAN_MATES.map(m => /*#__PURE__*/React.createElement("div", {
-    key: m.name,
-    className: "mate"
-  }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + m.img,
-    className: "mate-ico-img",
-    fallback: /*#__PURE__*/React.createElement("span", {
-      className: "mate-ico"
-    }, m.emoji)
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "mate-name"
-  }, m.name))), /*#__PURE__*/React.createElement("div", {
-    className: "mate you"
-  }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'UI_PlayerIcon.png',
-    className: "mate-ico-img",
-    fallback: /*#__PURE__*/React.createElement("span", {
-      className: "mate-ico"
-    }, "🥷")
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "mate-name"
-  }, "あなた"))), !defeated ? /*#__PURE__*/React.createElement("button", {
-    className: "big-btn red-btn" + (tickets > 0 ? '' : ' disabled'),
-    onClick: attack
-  }, "攻撃する！ 🎟️×1") : /*#__PURE__*/React.createElement("button", {
-    className: "big-btn gold-btn" + (claimed ? ' disabled' : ''),
-    disabled: claimed,
-    onClick: claim
-  }, claimed ? '受取済み' : '報酬を受け取る 💰500,000'), !defeated && tickets <= 0 && /*#__PURE__*/React.createElement("div", {
+    className: "raid-party-bar"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rpb-head"
+  }, /*#__PURE__*/React.createElement("span", null, "討伐編成・合計攻撃力 ⚔️", fmt(partyAP)), /*#__PURE__*/React.createElement("button", {
+    className: "raid-party-edit",
+    onClick: onEditParty
+  }, "編成 ✎")), /*#__PURE__*/React.createElement("div", {
+    className: "raid-party-slots"
+  }, Array.from({
+    length: RAID_PARTY_MAX
+  }).map((_, i) => {
+    const id = raidParty[i];
+    const c = id && CHAR_BY_ID[id];
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "raid-party-slot" + (c ? ' filled' : ''),
+      onClick: !c ? onEditParty : undefined
+    }, c ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
+      src: charThumb(c.id),
+      className: "rps-img",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 26
+        }
+      }, "🧙")
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "rps-name"
+    }, c.name), /*#__PURE__*/React.createElement("span", {
+      className: "rps-lv"
+    }, "Lv", charLevels[c.id] || 1)) : /*#__PURE__*/React.createElement("span", {
+      className: "rps-plus"
+    }, "＋"));
+  }))), allDone ? /*#__PURE__*/React.createElement("div", {
+    className: "raid-done"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "raid-done-title"
+  }, "🏆 討伐完了！"), /*#__PURE__*/React.createElement("div", {
+    className: "raid-log"
+  }, "全10体のボスを討伐した。一族の伝説は語り継がれる。")) : awaitingUnlock ? /*#__PURE__*/React.createElement("div", {
     className: "raid-log",
     style: {
       marginTop: 8
     }
-  }, "🎟️チケットはゾロ目小判で入手できます")));
+  }, "次のボスはステージ", boss + 1, "到達で出現します") : defeated ? /*#__PURE__*/React.createElement("button", {
+    className: "big-btn gold-btn" + (claimedThis ? ' disabled' : ''),
+    disabled: claimedThis,
+    onClick: claim
+  }, claimedThis ? '受取済み' : `報酬を受け取る 💰${fmt(raidBossCoin(boss))}`) : /*#__PURE__*/React.createElement("button", {
+    className: "big-btn red-btn" + (tickets > 0 && raidParty.length ? '' : ' disabled'),
+    onClick: attack
+  }, "攻撃する！ 🎟️×1"), !allDone && !awaitingUnlock && !defeated && tickets <= 0 && /*#__PURE__*/React.createElement("div", {
+    className: "raid-log",
+    style: {
+      marginTop: 8
+    }
+  }, "🎟️チケットはゾロ目小判で入手できます"), !allDone && !awaitingUnlock && !defeated && tickets > 0 && !raidParty.length && /*#__PURE__*/React.createElement("div", {
+    className: "raid-log",
+    style: {
+      marginTop: 8
+    }
+  }, "討伐編成を1体以上組もう")));
+}
+
+/* ============================================================
+   RAID PARTY — 討伐編成画面（所持キャラから最大4体を選出）
+   ============================================================ */
+function RaidPartyScreen({
+  ownedPieces,
+  charLevels = {},
+  party = [],
+  onToggle,
+  onBack,
+  stage
+}) {
+  const ranks = ['normal', 'rare', 'epic', 'legend'];
+  const sumAP = party.reduce((s, id) => s + attackPower(id, charLevels[id] || 1), 0);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen sheet-screen"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mini-bar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "ghost-btn",
+    onClick: onBack
+  }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
+    className: "ghost-label"
+  }, "🗡️ 討伐編成")), /*#__PURE__*/React.createElement("div", {
+    className: "char-equip-banner"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ceb-info"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ceb-label"
+  }, "編成 ", party.length, "/", RAID_PARTY_MAX), /*#__PURE__*/React.createElement("div", {
+    className: "ceb-name"
+  }, "合計攻撃力 ⚔️", fmt(sumAP)))), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-scroll"
+  }, ranks.map(rk => {
+    const meta = CHAR_RANKS[rk];
+    const list = CHARACTERS.filter(c => c.rank === rk);
+    return /*#__PURE__*/React.createElement("div", {
+      key: rk,
+      className: "char-rank-sec",
+      style: {
+        borderColor: meta.color
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "cs-head"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "cs-name",
+      style: {
+        color: meta.color
+      }
+    }, meta.label)), /*#__PURE__*/React.createElement("div", {
+      className: "char-grid"
+    }, list.map(c => {
+      const pieces = ownedPieces[c.id] || 0;
+      const owned = pieces >= CHAR_PIECE_GOAL && c.unlockStage <= stage;
+      const locked = !owned;
+      const lv = charLevels[c.id] || 1;
+      const selIdx = party.indexOf(c.id);
+      const selected = selIdx >= 0;
+      const full = !selected && party.length >= RAID_PARTY_MAX;
+      return /*#__PURE__*/React.createElement("div", {
+        key: c.id,
+        className: "char-card raid-pick " + (owned ? 'owned ' : '') + (locked ? 'locked ' : '') + (selected ? 'selected ' : '') + (full ? 'full-disabled' : ''),
+        style: {
+          '--rk': meta.color
+        },
+        onClick: () => owned && onToggle(c.id)
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "char-card-face"
+      }, locked ? /*#__PURE__*/React.createElement("span", {
+        className: "char-lock"
+      }, "🔒") : /*#__PURE__*/React.createElement(Img, {
+        src: charThumb(c.id),
+        className: "char-card-img",
+        fallback: /*#__PURE__*/React.createElement("span", {
+          style: {
+            fontSize: 38
+          }
+        }, "🧙")
+      }), /*#__PURE__*/React.createElement("span", {
+        className: "char-rank-tag",
+        style: {
+          background: meta.color
+        }
+      }, meta.short), selected && /*#__PURE__*/React.createElement("span", {
+        className: "raid-pick-badge"
+      }, selIdx + 1)), /*#__PURE__*/React.createElement("div", {
+        className: "char-card-name"
+      }, locked ? '？？？' : c.name), owned ? /*#__PURE__*/React.createElement("div", {
+        className: "char-atk-badge"
+      }, "⚔️", attackPower(c.id, lv), "\u3000Lv", lv) : /*#__PURE__*/React.createElement("div", {
+        className: "char-card-desc"
+      }, "未入手"));
+    })));
+  })));
 }
 
 /* ============================================================
@@ -4168,7 +4443,8 @@ function ShopScreen({
   ownedPieces,
   onBuyPiece,
   kobanItems,
-  onBuyKoban
+  onBuyKoban,
+  charLevels = {}
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "screen sheet-screen"
@@ -4203,11 +4479,15 @@ function ShopScreen({
     const rk = CHAR_RANKS[ch.rank];
     const price = CHAR_SHOP_PRICE[ch.rank];
     const bought = shopBought.includes(id);
-    const done = (ownedPieces[id] || 0) >= CHAR_PIECE_GOAL;
+    const pieces = ownedPieces[id] || 0;
+    const unlocked = pieces >= CHAR_PIECE_GOAL; // 解放済み（旧 done）。解放後もピースは強化素材として購入可
+    const lv = charLevels[id] || 1;
+    const maxed = unlocked && lv >= CHAR_MAX_LEVEL; // Lv最大＝ピースが完全に無駄になるため購入不可
     const poor = coins < price.coins;
+    const disabled = bought || maxed;
     return /*#__PURE__*/React.createElement("div", {
       key: id,
-      className: "piece-offer " + (bought ? 'bought' : ''),
+      className: "piece-offer " + (bought ? 'bought ' : '') + (maxed ? 'maxed' : ''),
       style: {
         '--rk': rk.color
       }
@@ -4226,15 +4506,17 @@ function ShopScreen({
       style: {
         background: rk.color
       }
-    }, rk.short)), /*#__PURE__*/React.createElement("div", {
+    }, rk.short), unlocked && /*#__PURE__*/React.createElement("span", {
+      className: "po-owned-badge"
+    }, "✅ 解放済 Lv", lv)), /*#__PURE__*/React.createElement("div", {
       className: "po-name"
     }, ch.name), /*#__PURE__*/React.createElement("div", {
       className: "po-amt"
-    }, "かけら +", price.pieces), /*#__PURE__*/React.createElement("button", {
-      className: "po-buy " + (bought || done ? 'disabled' : poor ? 'poor' : 'buy'),
-      disabled: bought || done,
+    }, unlocked ? `強化かけら +${price.pieces}` : `かけら +${price.pieces}`), /*#__PURE__*/React.createElement("button", {
+      className: "po-buy " + (disabled ? 'disabled' : poor ? 'poor' : 'buy'),
+      disabled: disabled,
       onClick: () => onBuyPiece(id)
-    }, done ? '入手済み' : bought ? '購入済み' : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
+    }, bought ? '購入済み' : maxed ? 'Lv最大' : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
       src: IMG + 'Koban_Small.png',
       className: "po-koban",
       fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
@@ -4678,7 +4960,17 @@ function App() {
   useEffect(() => {
     lsSet('ndm_char_equipped', equippedChar);
   }, [equippedChar]);
-  const eff = activeEffect(equippedChar); // 装備キャラの有効 effect
+  // キャラのレベル（ピース購入で最大Lv5まで強化。討伐戦の攻撃力・装備効果に反映）。localStorage 永続。
+  const [charLevels, setCharLevels] = useState(() => lsGet('ndm_char_levels', {}));
+  useEffect(() => {
+    lsSet('ndm_char_levels', charLevels);
+  }, [charLevels]);
+  // 討伐戦専用の編成（最大4体）。localStorage 永続。
+  const [raidParty, setRaidParty] = useState(() => lsGet('ndm_raid_party', []));
+  useEffect(() => {
+    lsSet('ndm_raid_party', raidParty);
+  }, [raidParty]);
+  const eff = activeEffect(equippedChar, charLevels[equippedChar] || 1); // 装備キャラの有効 effect（レベル反映）
   const effRef = useRef(eff);
   effRef.current = eff; // フロー/タイマー内での参照用
   const [charPopup, setCharPopup] = useState(null); // {char, pending} 新キャラ入手演出（pending=ステージ未到達で解放待ち）
@@ -4697,14 +4989,26 @@ function App() {
   useEffect(() => {
     lsSet('ndm_charshop', charShop);
   }, [charShop]);
-  // レイド進行はApp側で保持（画面を離れて戻っても城HPがリセットされない）
-  const [raid, setRaid] = useState({
+  // レイド進行はApp側で保持（画面を離れて戻ってもボスHPがリセットされない）。10体ローテーション・localStorage 永続。
+  const RAID_DEFAULT = {
+    boss: 1,
     hp: 100,
-    defeated: false,
-    claimed: false,
-    log: '一族で巨大城「妖魔城」を攻略せよ！',
-    milestonesHit: []
+    awaitingUnlock: false,
+    allDone: false,
+    claimedBosses: [],
+    milestonesHit: [],
+    log: '一族で強敵を討伐せよ！'
+  };
+  const [raid, setRaid] = useState(() => {
+    const s = lsGet('ndm_raid', null);
+    return s && Number.isInteger(s.boss) ? {
+      ...RAID_DEFAULT,
+      ...s
+    } : RAID_DEFAULT;
   });
+  useEffect(() => {
+    lsSet('ndm_raid', raid);
+  }, [raid]);
   const [bet, setBet] = useState(1); // ロールポイント倍率（1〜3）：消費ロール＆報酬に同倍率
   const betRef = useRef(1);
   betRef.current = bet; // フロー中の報酬計算で参照（stale closure回避）
@@ -4732,6 +5036,24 @@ function App() {
   const stageRef = useRef(stage);
   useEffect(() => {
     stageRef.current = stage;
+  }, [stage]);
+
+  // 討伐戦：報酬受取後、次ボスの解放待ち（awaitingUnlock）だった場合は村ステージが追いついた瞬間に出現させる。
+  // ClanRaidScreen が非マウントでも進行させる必要があるため App 側に置く。
+  useEffect(() => {
+    setRaid(r => {
+      if (r.awaitingUnlock && !r.allDone && stage >= r.boss + 1) {
+        return {
+          ...r,
+          boss: r.boss + 1,
+          hp: 100,
+          awaitingUnlock: false,
+          milestonesHit: [],
+          log: `ボス${r.boss + 1}が出現した！`
+        };
+      }
+      return r;
+    });
   }, [stage]);
   const showToast = useCallback(msg => {
     setToast(msg);
@@ -4844,7 +5166,7 @@ function App() {
       let amt = piecesFor(ch.rank, source);
       amt = Math.round(amt * (1 + (effRef.current.pieceBonus || 0)));
       const cur = owned[ch.id] || 0;
-      const nx = Math.min(CHAR_PIECE_GOAL, cur + amt);
+      const nx = cur + amt; // 100到達後も貯まる（レベルアップ素材として使うため上限なし）
       owned[ch.id] = nx;
       last = ch;
       gained = amt;
@@ -4879,6 +5201,48 @@ function App() {
     SFX.tap();
   }, []);
 
+  // ピース（100枚コンプ後の余剰）を消費してキャラをレベルアップ（最大Lv5）。討伐戦の攻撃力・装備効果に反映。
+  const levelUpChar = useCallback(id => {
+    const c = CHAR_BY_ID[id];
+    if (!c) return;
+    const pieces = ownedPiecesRef.current[id] || 0;
+    const lv = charLevels[id] || 1;
+    if (pieces < CHAR_PIECE_GOAL) return;
+    if (lv >= CHAR_MAX_LEVEL) {
+      showToast('最大レベルです');
+      return;
+    }
+    const cost = charLevelCost(c.rank, lv);
+    if (pieces - CHAR_PIECE_GOAL < cost) {
+      showToast('かけらが足りません');
+      return;
+    }
+    const owned = {
+      ...ownedPiecesRef.current,
+      [id]: pieces - cost
+    };
+    ownedPiecesRef.current = owned;
+    setOwnedCharPieces(owned);
+    setCharLevels(m => ({
+      ...m,
+      [id]: lv + 1
+    }));
+    SFX.stage();
+    showToast(`⬆️ ${c.name} Lv${lv + 1}！`);
+  }, [charLevels, showToast]);
+
+  // 討伐編成（最大4体）の選択/解除
+  const toggleRaidParty = useCallback(id => {
+    setRaidParty(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      const c = CHAR_BY_ID[id];
+      const owned = c && (ownedPiecesRef.current[id] || 0) >= CHAR_PIECE_GOAL && c.unlockStage <= stageRef.current;
+      if (!owned || prev.length >= RAID_PARTY_MAX) return prev;
+      return [...prev, id];
+    });
+    SFX.tap();
+  }, []);
+
   // 指定キャラに固定枚数のピースを加算（ショップ購入・スティール・ジャックポット召喚用）。100到達で入手演出。
   // ジャックポット召喚（rollCompanionSummon）はステージ未到達キャラも対象になり得るため pending 判定が必要。
   const addPiecesTo = useCallback((charId, amt) => {
@@ -4886,7 +5250,7 @@ function App() {
       ...ownedPiecesRef.current
     };
     const cur = owned[charId] || 0;
-    const nx = Math.min(CHAR_PIECE_GOAL, cur + amt);
+    const nx = cur + amt; // 100到達後も貯まる（レベルアップ素材として使うため上限なし）
     owned[charId] = nx;
     ownedPiecesRef.current = owned;
     setOwnedCharPieces(owned);
@@ -5208,7 +5572,9 @@ function App() {
     equipped: equippedChar,
     onEquip: equipChar,
     onBack: () => go('main'),
-    stage: stage
+    stage: stage,
+    charLevels: charLevels,
+    onLevelUp: levelUpChar
   }), screen === 'clan' && /*#__PURE__*/React.createElement(ClanRaidScreen, {
     onBack: () => go('main'),
     addCoins: addCoins,
@@ -5217,7 +5583,18 @@ function App() {
     tickets: tickets,
     spendTicket: spendTicket,
     raid: raid,
-    setRaid: setRaid
+    setRaid: setRaid,
+    raidParty: raidParty,
+    charLevels: charLevels,
+    stage: stage,
+    onEditParty: () => go('raidParty')
+  }), screen === 'raidParty' && /*#__PURE__*/React.createElement(RaidPartyScreen, {
+    ownedPieces: ownedCharPieces,
+    charLevels: charLevels,
+    party: raidParty,
+    onToggle: toggleRaidParty,
+    onBack: () => go('clan'),
+    stage: stage
   }), screen === 'season' && /*#__PURE__*/React.createElement(SeasonScreen, {
     xp: seasonXP,
     claimed: claimedTiers,
@@ -5237,7 +5614,8 @@ function App() {
     ownedPieces: ownedCharPieces,
     onBuyPiece: buyCharPieces,
     kobanItems: KOBAN_SHOP,
-    onBuyKoban: buyKoban
+    onBuyKoban: buyKoban,
+    charLevels: charLevels
   }), cardPopup && /*#__PURE__*/React.createElement("div", {
     className: "card-popup",
     key: cardPopup.card.id + (cardPopup.isNew ? '-n' : '-d')
