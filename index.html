@@ -182,13 +182,16 @@
       min-height: 0;
     }
     .dice-stage { position: relative; display: grid; place-items: center; }
-    .dice-row { position: relative; z-index: 1; display: flex; gap: 16px; align-items: center; justify-content: center; }
+    /* max-width keeps the row clear of the absolutely-positioned .side-rail (72px wide + 5px offset each side);
+       .die shrinks via flex-basis so it never overlaps the side UI on narrow viewports. */
+    .dice-row { position: relative; z-index: 1; display: flex; gap: 12px; align-items: center; justify-content: center; max-width: calc(100% - 166px); }
     /* coin burst BEHIND the dice */
     .dice-coin-burst { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 300px; height: 300px; object-fit: contain; opacity: 0; z-index: 0; pointer-events: none; }
     .dice-coin-burst.on { animation: burstAnim .8s ease-out; }
     .die {
       position: relative;
-      width: 96px; height: 96px;
+      flex: 0 1 96px;
+      width: 96px; aspect-ratio: 1 / 1; height: auto;
       display: grid; place-items: center;
       filter: drop-shadow(0 8px 10px rgba(0,0,0,.55));
       transform-origin: center;
@@ -202,7 +205,7 @@
     }
     .die .face-emoji {
       position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%);
-      font-size: 40px;
+      font-size: clamp(24px, 8vw, 40px);
     }
     .die.spinning { animation: dieSpin .28s linear infinite; }
     .die.landed { animation: dieLand .35s cubic-bezier(.2,1.4,.5,1); }
@@ -306,8 +309,8 @@
     .gain-banner img { width: 24px; height: 24px; object-fit: contain; }
 
     /* ---------- ENERGY BAR ---------- */
-    /* 左右サイドレール（幅58px＋左右5px＝内側端63px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
-    .energy-wrap { position: relative; z-index: 5; padding: 6px 70px 2px; }
+    /* 左右サイドレール（rail-btn幅64px＋左右5px＝内側端69px）に被らないよう本体を内側に寄せる。短い画面で縦に詰まってもレールと重ならない。 */
+    .energy-wrap { position: relative; z-index: 5; padding: 6px 85px 2px; }
     .energy-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 4px; }
     .energy-top b { color: var(--gold-light); font-size: 14px; }
     .energy-right { display: inline-flex; align-items: center; gap: 8px; }
@@ -470,17 +473,19 @@
     .scroll-title { font-size: 26px; font-weight: 900; letter-spacing: 1px; color: var(--red); }
     .scroll-sub { font-size: 12px; font-weight: 700; color: #7c2d12; letter-spacing: 3px; }
 
-    /* ---------- Big buttons (shared) ---------- */
+    /* ---------- Big buttons (shared): 木札／絵馬風（Btn_WoodWide_*） ---------- */
     .big-btn {
-      display: block; margin: 12px auto; padding: 15px 26px; border-radius: 16px;
-      border: 3px solid rgba(255,255,255,.25); font-size: 19px; font-weight: 900; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      margin: 12px auto; padding: 0 28px; border-radius: 16px;
+      aspect-ratio: 2 / 1; width: min(78%, 340px); min-height: 64px;
+      border: 3px solid rgba(255,255,255,.25); font-size: 22px; font-weight: 900; color: #fff;
       cursor: pointer; box-shadow: 0 6px 0 rgba(0,0,0,.35), 0 8px 16px rgba(0,0,0,.4);
       transition: transform .08s, box-shadow .08s; z-index: 6; position: relative; max-width: 88%;
     }
     .big-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.35); }
     .gold-btn { background: linear-gradient(180deg,#F0C040,#D4A017); border-color:#fff6d5; color:#4a3400; text-shadow:0 1px 0 rgba(255,255,255,.4); }
     .green-btn { background: linear-gradient(180deg,#34d399,#059669); border-color:#bbf7d0; }
-    .big-btn.small { font-size: 16px; padding: 12px 18px; margin: 8px auto; }
+    .big-btn.small { aspect-ratio: 2 / 1; width: min(60%, 260px); min-height: 52px; font-size: 17px; padding: 0 18px; margin: 8px auto; }
     .big-btn.disabled, .big-btn:disabled { filter: grayscale(.6) brightness(.75); cursor: default; }
     .big-btn.busy { animation: pulse .6s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.7;} }
@@ -811,12 +816,14 @@
     .debug-item:disabled { opacity: .4; cursor: default; }
     .debug-close { margin-top: 3px; padding: 8px; border-radius: 9px; border: none; background: #334155; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
     /* ============ ROLL POINT (bet) selector ============ */
-    .bet-bar { position: relative; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 12px 4px; }
-    .bet-label { font-size: 11px; font-weight: 700; color: #cbd5e1; }
-    .bet-btn { min-width: 38px; padding: 5px 8px; border-radius: 10px; border: 2px solid rgba(240,192,64,.45); background: rgba(0,0,0,.4); color: #fde68a; font-weight: 900; font-size: 14px; cursor: pointer; }
+    /* rail-btn幅64px（内側端69px）に合わせ、レール非重複のため左右85px確保（余裕あり） */
+    /* ラベル・ヒントは横並びだと拡大したチップと合わせて幅が足りず縦書きに割れてしまうため、中央寄せの独立行にする（flex-basis:100%で改行）。左右paddingは小さくてもチップ・短い中央テキストはサイドレールに被らない。 */
+    .bet-bar { position: relative; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px 8px; padding: 2px 12px 6px; }
+    .bet-label { font-size: 12px; font-weight: 800; color: #cbd5e1; flex-basis: 100%; text-align: center; white-space: nowrap; }
+    .bet-btn { min-width: 52px; aspect-ratio: 1/1; padding: 5px 8px; border-radius: 10px; border: 2px solid rgba(240,192,64,.45); background: rgba(0,0,0,.4); color: #fde68a; font-weight: 900; font-size: 16px; cursor: pointer; }
     .bet-btn.on { background: linear-gradient(180deg,#F0C040,#D4A017); color: #4a3400; border-color: #fff6d5; box-shadow: 0 0 10px rgba(240,192,64,.6); }
     .bet-btn:disabled { opacity: .5; cursor: default; }
-    .bet-hint { font-size: 10.5px; color: #9ca3af; margin-left: 4px; }
+    .bet-hint { font-size: 10.5px; color: #9ca3af; flex-basis: 100%; text-align: center; white-space: nowrap; }
 
     /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
     .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 16px;
@@ -953,17 +960,18 @@
     .card-face .cf-name { font-size:9px; font-weight:700; color:#e5e7eb; text-align:center; line-height:1.1; padding:0 2px; }
     .card-face .cf-goldtag { position:absolute; top:3px; right:3px; font-size:7px; font-weight:900; color:#4a3400; background:#F0C040; padding:1px 4px; border-radius:4px; }
 
-    /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）===== */
-    .side-rail { position:absolute; z-index:7; top:180px; display:flex; flex-direction:column; gap:9px; }
+    /* ===== 左右サイドレール（旧メニュー＋ボトムナビを分散）: 木札／絵馬風（Btn_WoodSquare） ===== */
+    /* rail-btn幅64px（内側端 5+64=69px）に合わせ、.energy-wrap / .bet-bar の左右paddingは 85px 以上を確保すること */
+    .side-rail { position:absolute; z-index:7; top:180px; display:flex; flex-direction:column; gap:8px; }
     .side-rail.left { left:5px; } .side-rail.right { right:5px; }
-    .rail-btn { position:relative; width:58px; display:flex; flex-direction:column; align-items:center; gap:0;
-      padding:10px 4px 8px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
-      background:url("assets/images/Btn_Nav.png") center/100% 100% no-repeat; }
+    .rail-btn { position:relative; width:64px; aspect-ratio: 1 / 1.05; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0;
+      padding:9px 4px 7px; border:none; cursor:pointer; color:#fff; -webkit-tap-highlight-color:transparent;
+      background:url("assets/images/Btn_WoodSquare.png") center/100% 100% no-repeat; }
     .rail-btn:active { transform:translateY(1px); filter:drop-shadow(0 0 7px rgba(240,192,64,.7)); }
     .rail-ico { width:34px; height:34px; object-fit:contain; }
-    .rail-emoji { font-size:26px; line-height:1; }
-    .rail-label { font-size:10px; font-weight:900; margin-top:2px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
-    .rail-btn .nb-badge { position:absolute; top:-6px; right:-5px; }
+    .rail-emoji { font-size:22px; line-height:1; }
+    .rail-label { font-size:10px; font-weight:900; line-height:1; margin-top:3px; letter-spacing:-.3px; text-shadow:0 1px 2px rgba(0,0,0,.7); }
+    .rail-btn .nb-badge { position:absolute; top:-5px; right:-4px; }
 
     /* ===== 常時表示のミニマスコット（装備キャラ・左下の空きスペース）===== */
     .game-mascot { position:absolute; z-index:8; left:8px; bottom:80px; width:86px; height:86px;
@@ -1035,7 +1043,8 @@
     .raid-castle { width:190px; object-fit:contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
     .raid-castle.broken { filter: grayscale(.5) brightness(.7) drop-shadow(0 0 12px #dc2626); }
     .raid-fx { position:absolute; width:200px; height:200px; object-fit:contain; }
-    .raid-hpbar { position:relative; width:90%; height:22px; background:rgba(0,0,0,.6); border:2px solid #7f1d1d; border-radius:999px; overflow:hidden; margin:10px 0 4px; }
+    .raid-hpbar-frame { width:90%; margin:10px 0 4px; box-sizing:border-box; }
+    .raid-hpbar { position:relative; width:100%; height:22px; background:rgba(0,0,0,.6); border:2px solid #7f1d1d; border-radius:999px; overflow:hidden; }
     .raid-hpfill { height:100%; background:linear-gradient(90deg,#ef4444,#f87171); transition:width .4s ease; }
     .raid-hptext { position:absolute; inset:0; display:grid; place-items:center; font-size:12px; font-weight:900; color:#fff; text-shadow:0 1px 2px #000; }
     .raid-log { font-size:13px; font-weight:700; color:#fde68a; background:rgba(0,0,0,.45); padding:6px 12px; border-radius:8px; margin:6px 0; min-height:20px; }
@@ -1138,7 +1147,7 @@
     .bonus-reward, .card-set, .shop-pack, .debug-panel, .reveal-card,
     .menu-sheet, .cp-inner,
     .trigger-card, .raid-log, .bonus-status, .season-tier, .invite-mile,
-    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item {
+    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item, .raid-hpbar-frame {
       background: transparent !important;
       border-style: solid !important;
       border-color: transparent !important;
@@ -1149,7 +1158,7 @@
     }
     /* 小さめタイル/行は枠を細く（内側の余白を取りすぎない） */
     .trigger-card, .raid-log, .bonus-status, .season-tier, .invite-mile,
-    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item {
+    .part-card, .build-card, .steal-card, .bonus-tile, .menu-item, .raid-hpbar-frame {
       border-image-width: 12px !important;
       border-width: 12px !important;
     }
@@ -1161,7 +1170,7 @@
     .build-card.poor { filter: grayscale(.3) brightness(.8); }
 
     /* --- カプセル型（ピル） UI_Pill --- */
-    .coin-pill, .shield-box, .toast, .ghost-label, .ghost-btn,
+    .toast, .ghost-label, .ghost-btn,
     .steal-progress, .gain-banner, .z-next, .pack-tag {
       background: url("assets/images/UI_Pill.png") center/100% 100% no-repeat !important;
       border: none !important;
@@ -1172,19 +1181,30 @@
     .toast, .ghost-label, .ghost-btn, .steal-progress, .gain-banner, .z-next, .pack-tag {
       padding-left: 20px !important; padding-right: 20px !important;
     }
-    .coin-pill, .shield-box { padding-left: 12px !important; padding-right: 14px !important; }
+    /* --- coin-pill / shield-box: 木札カプセル（Pill_Wood） --- */
+    .coin-pill, .shield-box {
+      background: url("assets/images/Pill_Wood.png") center/100% 100% no-repeat !important;
+      border: none !important;
+      box-shadow: none !important;
+      -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+      min-height: 38px !important;
+      padding-left: 12px !important; padding-right: 14px !important;
+    }
 
-    /* --- 大ボタン（金/緑/朱） --- */
+    /* --- 大ボタン（木札／絵馬風・金/緑/朱） --- */
+    /* 絵馬は上部が尖った形状のため、ラベルは中央よりやや下のインセット面に載せる */
     .big-btn { border: none !important; box-shadow: none !important;
       background: center/100% 100% no-repeat !important;
       white-space: nowrap;
+      align-items: flex-end !important; padding-bottom: 12% !important;
       filter: drop-shadow(0 4px 5px rgba(0,0,0,.45)); }
     /* スティール結果の受け取りボタンは枠内に収める */
-    .steal-summary .big-btn { font-size: 17px; padding: 12px 24px; margin: 10px auto 2px; max-width: 100%; }
-    .big-btn:active:not(:disabled) { transform: translateY(4px); filter: brightness(.93) drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
-    .gold-btn  { background-image: url("assets/images/Btn_Gold.png")  !important; }
-    .green-btn { background-image: url("assets/images/Btn_Green.png") !important; }
-    .red-btn   { background-image: url("assets/images/Btn_Red.png")   !important; }
+    .steal-summary .big-btn { font-size: 17px; margin: 10px auto 2px; max-width: 100%; }
+    /* big-btn系は押下時もPress画像へ差し替えず、通常のwide画像＋CSSのみで押下感を表現（アスペクト比バグ回避） */
+    .big-btn:active:not(:disabled) { transform: translateY(4px) scale(.98); filter: brightness(.9) drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+    .gold-btn  { background-image: url("assets/images/Btn_WoodWide_Gold.png")  !important; color:#3a2a00; text-shadow:0 1px 0 rgba(255,240,200,.5); }
+    .green-btn { background-image: url("assets/images/Btn_WoodWide_Green.png") !important; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+    .red-btn   { background-image: url("assets/images/Btn_WoodWide_Red.png")   !important; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.7); }
     .big-btn:disabled, .big-btn.disabled { filter: grayscale(.6) brightness(.7); }
 
     /* --- ロールボタン（丸／手裏剣）＋停止 --- */
@@ -1208,10 +1228,10 @@
     .nav-btn:active { background: url("assets/images/Btn_Nav.png") center/100% 100% no-repeat !important;
       filter: drop-shadow(0 0 8px rgba(240,192,64,.7)); }
 
-    /* --- ベット（ロールポイント）ボタン on/off --- */
-    .bet-btn { background: url("assets/images/Btn_Bet_Off.png") center/100% 100% no-repeat !important;
+    /* --- ベット（ロールポイント）ボタン on/off: 木札チップ（Btn_WoodChip_*） --- */
+    .bet-btn { background: url("assets/images/Btn_WoodChip_Off.png") center/100% 100% no-repeat !important;
       border: none !important; box-shadow: none !important; color: #fde68a; }
-    .bet-btn.on { background-image: url("assets/images/Btn_Bet_On.png") !important; color: #4a3400; }
+    .bet-btn.on { background-image: url("assets/images/Btn_WoodChip_On.png") !important; color: #4a3400; }
 
     /* --- その他ボタン（無料ロール／シーズン受取） --- */
     .free-roll-btn, .tier-btn.ready {
@@ -1258,14 +1278,12 @@
     /* --- ボタン押下状態（*_Press スプライトに差し替え） --- */
     .roll-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Roll_Press.png") !important; }
     .roll-btn.stop:active:not(:disabled) { background-image: url("assets/images/Btn_Roll_Stop.png") !important; filter: brightness(.8) drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
-    .gold-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Gold_Press.png")  !important; }
-    .green-btn:active:not(:disabled), .free-roll-btn:active, .tier-btn.ready:active { background-image: url("assets/images/Btn_Green_Press.png") !important; }
-    .red-btn:active:not(:disabled)   { background-image: url("assets/images/Btn_Red_Press.png")   !important; }
+    /* free-roll-btn / tier-btn.ready は引き続きPress画像スワップを使用（big-btnとは別クラスのため独立） */
+    .free-roll-btn:active, .tier-btn.ready:active { background-image: url("assets/images/Btn_Green_Press.png") !important; }
     .nav-btn:active { background-image: url("assets/images/Btn_Nav_Press.png") !important; }
-    /* 大ボタンはプレス画像とアスペクト比が異なり押下時に見かけの大きさが変わるため、通常画像を維持し translateY＋brightness で押下感を出す */
-    .big-btn.gold-btn:active:not(:disabled)  { background-image: url("assets/images/Btn_Gold.png")  !important; }
-    .big-btn.green-btn:active:not(:disabled) { background-image: url("assets/images/Btn_Green.png") !important; }
-    .big-btn.red-btn:active:not(:disabled)   { background-image: url("assets/images/Btn_Red.png")   !important; }
+    /* big-btn（木札／絵馬風）はPress画像を持たない方針。通常のwide画像を維持し、
+       上部の .big-btn:active ルール（transform: translateY(4px) scale(.98) + brightness(.9)）のみで押下感を出す。
+       ここでの画像スワップは行わない。 */
   </style>
 </head>
 <body>

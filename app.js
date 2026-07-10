@@ -1338,7 +1338,7 @@ function RollButton({
     }, "■"), "停止"), /*#__PURE__*/React.createElement("div", {
       className: "roll-sub auto",
       onClick: stop
-    }, "オートロール中（タップで停止）"));
+    }, "オートロール中"));
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "roll-zone"
@@ -1598,7 +1598,7 @@ function MainRoll({
   const doRoll = useCallback(forced => {
     if (rollingRef.current) return;
     if (game.rolls < game.bet) {
-      showToast(`ロールが足りません（×${game.bet}には${game.bet}必要）`);
+      showToast('ロールが足りません');
       setAuto(false);
       return;
     }
@@ -1876,7 +1876,7 @@ function MainRoll({
     className: "free-roll-btn",
     onClick: () => {
       grantRolls && grantRolls(5);
-      showToast('広告視聴（モック）🎲ロール +5');
+      showToast('🎲 ロール +5！');
     }
   }, "🎬 無料+5"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, game.rolls), " / ", game.rollsMax))), /*#__PURE__*/React.createElement("div", {
     className: "energy-track"
@@ -2153,7 +2153,6 @@ function BonusRoll({
     className: "bonus-dim"
   }), /*#__PURE__*/React.createElement(ScrollBanner, {
     title: "ボーナスロール！",
-    sub: "ぞろ目達成！特別ダイスを振れ",
     className: "bonus-title"
   }), /*#__PURE__*/React.createElement("div", {
     className: "trigger-card",
@@ -2347,7 +2346,7 @@ function AttackSelect({
   }, /*#__PURE__*/React.createElement("button", {
     className: "ghost-btn",
     onClick: onCancel
-  }, "← ", opponent.name, "の村"), /*#__PURE__*/React.createElement("span", {
+  }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "foe-coins"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'Koban_Small.png',
@@ -2425,7 +2424,7 @@ function AttackSelect({
     className: "predict-frame"
   }, /*#__PURE__*/React.createElement("div", null, "💥 破壊成功時: 相手コインの約 ", /*#__PURE__*/React.createElement("b", null, rate, "%"), " 獲得"), /*#__PURE__*/React.createElement("div", null, "🛡️ シールド時: 相手コインの約 ", /*#__PURE__*/React.createElement("b", null, "7%"), " 獲得"), bonusResult && /*#__PURE__*/React.createElement("div", {
     className: "predict-bonus"
-  }, "ボーナス: ", bonusResult.label, "（ダメージ ", bonusResult.damage || 0, "）"))), /*#__PURE__*/React.createElement("div", {
+  }, "ボーナス: ", bonusResult.label, " ダメージ", bonusResult.damage || 0))), /*#__PURE__*/React.createElement("div", {
     className: "attack-chara"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'Chara_RoboNinja.png',
@@ -2499,8 +2498,6 @@ function AttackResult({
   }), /*#__PURE__*/React.createElement("span", {
     className: "gold-text"
   }, "+", fmt(display))), /*#__PURE__*/React.createElement("div", {
-    className: "result-rate"
-  }, "（相手コインの ", success ? Math.round((result.rate || 0.25) * 100) : 7, "%）"), /*#__PURE__*/React.createElement("div", {
     className: "result-react"
   }, success ? `😡 ${foe}: 怒り` : `😅 ${foe}: セーフ`), /*#__PURE__*/React.createElement("button", {
     className: "big-btn green-btn",
@@ -2739,9 +2736,7 @@ function StealScreen({
   }, r.char.name, /*#__PURE__*/React.createElement("br", null), "かけら +", r.amount)))))), /*#__PURE__*/React.createElement("button", {
     className: "big-btn green-btn",
     onClick: () => onReceive(total, boxRewards)
-  }, "受け取る！"))) : /*#__PURE__*/React.createElement("div", {
-    className: "steal-progress"
-  }, "あと ", picksLeft, " か所盗める"), /*#__PURE__*/React.createElement("div", {
+  }, "受け取る！"))) : null, /*#__PURE__*/React.createElement("div", {
     className: "steal-chara"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'Chara_NinjaMonkey.png',
@@ -2802,16 +2797,13 @@ function CastleScreen({
     setVillage(nv);
     setTappedId(null);
     grantRolls && grantRolls(25); // ステージクリア報酬：ダイスロール
-    showToast(headStart > 0 ? '次のステージへ！ 🎲+25 ＆ 大黒天の加護で建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
+    showToast(headStart > 0 ? '次のステージへ！ 🎲+25 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
   };
   const costOf = it => it.level < itemMax(it) ? Math.round(buildCost(it.level, game.stage) * (1 - buildDiscount)) : 0;
 
   // Tapping a building (or its card) levels it up — no separate build button.
   const build = it => {
-    if (it.level >= itemMax(it)) {
-      showToast(`${it.emoji} は完成済み`);
-      return;
-    }
+    if (it.level >= itemMax(it)) return;
     const cost = costOf(it);
     if (game.coins < cost) {
       showToast('コインが足りません');
@@ -2846,7 +2838,7 @@ function CastleScreen({
   }, /*#__PURE__*/React.createElement("button", {
     className: "ghost-btn",
     onClick: onBack
-  }, "← ロール画面に戻る")), /*#__PURE__*/React.createElement(ScrollBanner, {
+  }, "← 戻る")), /*#__PURE__*/React.createElement(ScrollBanner, {
     title: `ステージ ${game.stage}`,
     className: "castle-title"
   }), /*#__PURE__*/React.createElement("div", {
@@ -2880,7 +2872,7 @@ function CastleScreen({
     }));
   })), /*#__PURE__*/React.createElement("div", {
     className: "build-hint"
-  }, "🔨 建物カードをタップしてレベルアップ！ 全部完成でステージクリア"), /*#__PURE__*/React.createElement("div", {
+  }, "🔨 タップしてレベルアップ！"), /*#__PURE__*/React.createElement("div", {
     className: "part-cards"
   }, village.map(it => {
     const done = it.level === itemMax(it);
@@ -2924,9 +2916,7 @@ function CastleScreen({
     className: "stage-clear"
   }, /*#__PURE__*/React.createElement("div", {
     className: "sc-title"
-  }, "🎉 ステージクリア！"), /*#__PURE__*/React.createElement("div", {
-    className: "sc-sub"
-  }, "村が完成しました！"), /*#__PURE__*/React.createElement("button", {
+  }, "🎉 ステージクリア！"), /*#__PURE__*/React.createElement("button", {
     className: "big-btn gold-btn",
     onClick: goNextStage
   }, "次のステージへ →"), /*#__PURE__*/React.createElement("button", {
@@ -3347,7 +3337,7 @@ const CHARACTERS = [
   name: '影のくノ一',
   rank: 'epic',
   unlockStage: 8,
-  desc: 'スティールで選ばなかった4か所目も自動獲得＋獲得+10%',
+  desc: 'スティール+1か所＋獲得+10%',
   effect: {
     stealLastSpot: true,
     stealMult: 1.10
@@ -3357,7 +3347,7 @@ const CHARACTERS = [
   name: '阿修羅武者',
   rank: 'epic',
   unlockStage: 8,
-  desc: 'アタックが相手シールドを無視して必ず成功＋獲得+15%',
+  desc: 'アタック必中＋獲得+15%',
   effect: {
     ignoreShield: true,
     attackMult: 1.15
@@ -3367,7 +3357,7 @@ const CHARACTERS = [
   name: '大黒天',
   rank: 'epic',
   unlockStage: 9,
-  desc: '建設費20%割引＋新ステージで建物1つがLv+1',
+  desc: '建設20%割引＋建物Lv+1',
   effect: {
     buildDiscount: 0.20,
     headStartLevels: 1
@@ -3377,7 +3367,7 @@ const CHARACTERS = [
   name: '七福神の宝船',
   rank: 'epic',
   unlockStage: 9,
-  desc: '小判ぞろ目コイン+25%＋宝箱ピース+20%',
+  desc: '小判ぞろ目+25%＋ピース+20%',
   effect: {
     coinMult: 1.25,
     pieceBonus: 0.20
@@ -3389,7 +3379,7 @@ const CHARACTERS = [
   name: '昇り龍神',
   rank: 'legend',
   unlockStage: 10,
-  desc: '全獲得コイン+30%＋ジャックポット強化',
+  desc: '全獲得+30%＋ジャックポット+50%',
   effect: {
     coinMult: 1.30,
     stealMult: 1.30,
@@ -3401,7 +3391,7 @@ const CHARACTERS = [
   name: '金の大天狗',
   rank: 'legend',
   unlockStage: 10,
-  desc: '20%で無料ロール＋建設25%割引＋宝箱ピース+30%',
+  desc: '無料ロール20%＋建設25%割引＋ピース+30%',
   effect: {
     freeRollChance: 0.20,
     buildDiscount: 0.25,
@@ -3662,11 +3652,9 @@ function CharactersScreen({
     className: "ceb-label"
   }, "装備中"), /*#__PURE__*/React.createElement("div", {
     className: "ceb-name"
-  }, eqChar.name), /*#__PURE__*/React.createElement("div", {
-    className: "ceb-desc"
-  }, eqChar.desc))) : /*#__PURE__*/React.createElement("div", {
+  }, eqChar.name))) : /*#__PURE__*/React.createElement("div", {
     className: "ceb-empty"
-  }, "仲間を装備すると常に効果が発動します")), /*#__PURE__*/React.createElement("div", {
+  }, "仲間を装備しよう")), /*#__PURE__*/React.createElement("div", {
     className: "sheet-scroll"
   }, ranks.map(rk => {
     const meta = CHAR_RANKS[rk];
@@ -3769,6 +3757,13 @@ const CLAN_MATES = [{
   emoji: '🤖',
   img: 'Chara_RoboNinja.png'
 }];
+// 城HPが75/50/25%を下回るたびに中間報酬（0%＝撃破の報酬は claim() 側で別途付与）
+const RAID_MILESTONE_REWARD = {
+  75: 50000,
+  50: 100000,
+  25: 150000
+};
+const RAID_MILESTONES = [75, 50, 25];
 function ClanRaidScreen({
   onBack,
   addCoins,
@@ -3783,26 +3778,10 @@ function ClanRaidScreen({
     hp,
     defeated,
     claimed,
-    log
+    log,
+    milestonesHit = []
   } = raid; // レイド進行はApp保持（再入場でリセットしない）
 
-  // mock allies chip away over time
-  useEffect(() => {
-    if (defeated) return;
-    const id = setInterval(() => {
-      setRaid(r => {
-        if (r.defeated || r.hp <= 0) return r;
-        const m = CLAN_MATES[Math.floor(Math.random() * CLAN_MATES.length)];
-        const dmg = 2 + Math.floor(Math.random() * 4);
-        return {
-          ...r,
-          hp: Math.max(0, r.hp - dmg),
-          log: `${m.emoji} ${m.name} が ${dmg}% 削った！`
-        };
-      });
-    }, 2500);
-    return () => clearInterval(id);
-  }, [defeated, setRaid]);
   useEffect(() => {
     if (hp <= 0 && !defeated) setRaid(r => ({
       ...r,
@@ -3813,15 +3792,23 @@ function ClanRaidScreen({
   const attack = () => {
     if (defeated) return;
     if (tickets <= 0) {
-      showToast('レイドチケット🎟️が必要（ゾロ目小判で入手）');
+      showToast('レイドチケット🎟️が必要');
       return;
     }
     spendTicket();
     const dmg = 6 + Math.floor(Math.random() * 8);
+    const nextHp = Math.max(0, hp - dmg);
+    const newlyHit = RAID_MILESTONES.filter(m => hp > m && nextHp <= m && !milestonesHit.includes(m));
+    if (newlyHit.length) {
+      const bonus = newlyHit.reduce((s, m) => s + RAID_MILESTONE_REWARD[m], 0);
+      addCoins(bonus);
+      showToast(`🏯 城HP ${newlyHit[newlyHit.length - 1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
+    }
     setRaid(r => ({
       ...r,
-      hp: Math.max(0, r.hp - dmg),
-      log: `🥷 あなたが ${dmg}% 削った！（🎟️-1）`
+      hp: nextHp,
+      log: `🥷 あなたが ${dmg}% 削った！`,
+      milestonesHit: [...(r.milestonesHit || []), ...newlyHit]
     }));
   };
   const claim = () => {
@@ -3832,7 +3819,7 @@ function ClanRaidScreen({
     }));
     addCoins(500000);
     grantRolls && grantRolls(30);
-    showToast('レイド報酬 +500,000 🪙 ＆ 🎲ロール +30');
+    showToast('🎲 ロール +30 獲得！');
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "screen sheet-screen",
@@ -3867,6 +3854,8 @@ function ClanRaidScreen({
     className: "raid-fx",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), /*#__PURE__*/React.createElement("div", {
+    className: "raid-hpbar-frame"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "raid-hpbar"
   }, /*#__PURE__*/React.createElement("div", {
     className: "raid-hpfill",
@@ -3875,7 +3864,7 @@ function ClanRaidScreen({
     }
   }), /*#__PURE__*/React.createElement("span", {
     className: "raid-hptext"
-  }, "城HP ", hp, "%")), /*#__PURE__*/React.createElement("div", {
+  }, "城HP ", hp, "%"))), /*#__PURE__*/React.createElement("div", {
     className: "raid-log"
   }, log), /*#__PURE__*/React.createElement("div", {
     className: "clan-mates"
@@ -3892,15 +3881,19 @@ function ClanRaidScreen({
     className: "mate-name"
   }, m.name))), /*#__PURE__*/React.createElement("div", {
     className: "mate you"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "mate-ico"
-  }, "🥷"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'UI_PlayerIcon.png',
+    className: "mate-ico-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "mate-ico"
+    }, "🥷")
+  }), /*#__PURE__*/React.createElement("span", {
     className: "mate-name"
   }, "あなた"))), !defeated ? /*#__PURE__*/React.createElement("button", {
-    className: "big-btn " + (tickets > 0 ? 'red-btn' : 'disabled'),
+    className: "big-btn red-btn" + (tickets > 0 ? '' : ' disabled'),
     onClick: attack
-  }, "攻撃する！（🎟️1消費）") : /*#__PURE__*/React.createElement("button", {
-    className: "big-btn " + (claimed ? 'disabled' : 'gold-btn'),
+  }, "攻撃する！ 🎟️×1") : /*#__PURE__*/React.createElement("button", {
+    className: "big-btn gold-btn" + (claimed ? ' disabled' : ''),
     disabled: claimed,
     onClick: claim
   }, claimed ? '受取済み' : '報酬を受け取る 💰500,000'), !defeated && tickets <= 0 && /*#__PURE__*/React.createElement("div", {
@@ -4093,7 +4086,7 @@ function InviteScreen({
   const claim = (i, reward) => {
     setClaimed(c => [...c, i]);
     if (reward.kind === 'roll' && grantRolls) grantRolls(reward.amt || 0);else if (reward.kind === 'coin' && addCoins) addCoins(reward.amt || 0);
-    showToast('招待報酬を受け取りました（' + rewardLabel(reward) + '）');
+    showToast('招待報酬を受け取りました！');
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "screen sheet-screen"
@@ -4110,10 +4103,8 @@ function InviteScreen({
     className: "invite-code"
   }, "招待コード： ", /*#__PURE__*/React.createElement("b", null, "NINJA-7F3K")), /*#__PURE__*/React.createElement("button", {
     className: "big-btn green-btn",
-    onClick: () => showToast('招待リンクをコピーしました（モック）')
-  }, "招待リンクをコピー"), /*#__PURE__*/React.createElement("div", {
-    className: "invite-note"
-  }, "友達が下の条件を達成すると報酬がもらえる（段階付与）")), /*#__PURE__*/React.createElement("div", {
+    onClick: () => showToast('リンクをコピーしました')
+  }, "招待リンクをコピー")), /*#__PURE__*/React.createElement("div", {
     className: "sheet-scroll"
   }, INVITE_MILES.map((m, i) => {
     const isClaimed = claimed.includes(i);
@@ -4295,9 +4286,7 @@ function ShopScreen({
   }, p.coins > 0 && /*#__PURE__*/React.createElement("div", null, "🪙 ", fmt(p.coins)), p.rolls > 0 && /*#__PURE__*/React.createElement("div", null, "🎲 ", p.rolls), p.id === 'vip' && /*#__PURE__*/React.createElement("div", null, "👑 特典")), /*#__PURE__*/React.createElement("button", {
     className: "big-btn small gold-btn",
     onClick: () => onBuyPack(p)
-  }, p.price))))), /*#__PURE__*/React.createElement("div", {
-    className: "shop-note"
-  }, "※ モック。課金パックは無償付与、こばん商品はコインを消費します。")));
+  }, p.price)))))));
 }
 
 /* ============================================================
@@ -4616,7 +4605,7 @@ function ShieldOverlay({
     }
   }))), /*#__PURE__*/React.createElement("div", {
     className: "shield-sub"
-  }, "🛡️ 防御 満タン！ 次の攻撃を防ぐ")));
+  }, "🛡️ 次の攻撃を防ぐ")));
 }
 
 /* ============================================================
@@ -4710,10 +4699,11 @@ function App() {
   }, [charShop]);
   // レイド進行はApp側で保持（画面を離れて戻っても城HPがリセットされない）
   const [raid, setRaid] = useState({
-    hp: 72,
+    hp: 100,
     defeated: false,
     claimed: false,
-    log: '一族で巨大城「妖魔城」を攻略せよ！'
+    log: '一族で巨大城「妖魔城」を攻略せよ！',
+    milestonesHit: []
   });
   const [bet, setBet] = useState(1); // ロールポイント倍率（1〜3）：消費ロール＆報酬に同倍率
   const betRef = useRef(1);
@@ -5006,12 +4996,12 @@ function App() {
     setClaimedTiers(c => [...c, i]);
     const r = SEASON_TIERS[i];
     if (r.kind === 'roll') grantRolls(r.amt || 10);else if (r.kind === 'coin') addCoins(r.amt || 0);else if (r.kind === 'shield') grantShields(r.amt || 1);
-    showToast('シーズン報酬を受け取りました（' + rewardLabel(r) + '）');
+    showToast('シーズン報酬を受け取りました！');
   }, [claimedTiers, grantRolls, addCoins, grantShields, showToast]);
   const buyPack = useCallback(p => {
     if (p.coins) addCoins(p.coins);
     if (p.rolls) grantRolls(p.rolls);
-    showToast(`${p.title} を付与しました（モック）`);
+    showToast(`${p.title} を付与しました`);
   }, [addCoins, grantRolls, showToast]);
   const game = {
     coins,
@@ -5306,8 +5296,7 @@ function App() {
       showToast(`ジャックポット！ +${fmt(g)} 🪙`);
       if (summon) setTimeout(() => {
         addPiecesTo(summon.char.id, summon.amount);
-        const stageNote = summon.char.unlockStage > stage ? `（ステージ${summon.char.unlockStage}で解放）` : '';
-        showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}${stageNote}`);
+        showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}`);
       }, 450);
       if (boxReward) setTimeout(() => {
         grantStealRewards([boxReward]);
@@ -5318,7 +5307,6 @@ function App() {
     onDone: () => {
       setShieldFx(false);
       grantShields(3);
-      showToast('シールド 満タン！ 🛡️');
     }
   }), /*#__PURE__*/React.createElement(Toast, {
     msg: toast

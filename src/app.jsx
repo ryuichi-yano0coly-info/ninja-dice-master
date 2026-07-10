@@ -513,7 +513,7 @@ function RollButton({ disabled, onRoll, auto, onToggleAuto }) {
         <button className="roll-btn stop" onClick={stop}>
           <span className="stop-ico">■</span>停止
         </button>
-        <div className="roll-sub auto" onClick={stop}>オートロール中（タップで停止）</div>
+        <div className="roll-sub auto" onClick={stop}>オートロール中</div>
       </div>
     );
   }
@@ -650,7 +650,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
 
   const doRoll = useCallback((forced) => {
     if (rollingRef.current) return;
-    if (game.rolls < game.bet) { showToast(`ロールが足りません（×${game.bet}には${game.bet}必要）`); setAuto(false); return; }
+    if (game.rolls < game.bet) { showToast('ロールが足りません'); setAuto(false); return; }
     rollingRef.current = true;
     setIsRolling(true);
     if (Math.random() < freeRollRef.current) { showToast('🐾 無料ロール！'); }   // 招き猫系：消費なし
@@ -821,7 +821,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         <div className="energy-top">
           <span>残りロール</span>
           <span className="energy-right">
-            <button className="free-roll-btn" onClick={()=>{ grantRolls && grantRolls(5); showToast('広告視聴（モック）🎲ロール +5'); }}>🎬 無料+5</button>
+            <button className="free-roll-btn" onClick={()=>{ grantRolls && grantRolls(5); showToast('🎲 ロール +5！'); }}>🎬 無料+5</button>
             <span><b>{game.rolls}</b> / {game.rollsMax}</span>
           </span>
         </div>
@@ -985,7 +985,7 @@ function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
   return (
     <div className="screen bonus-screen" style={{ backgroundImage:`url("${IMG}BG_Bonus.png")`, '--zc':color }}>
       <div className="bonus-dim" />
-      <ScrollBanner title="ボーナスロール！" sub="ぞろ目達成！特別ダイスを振れ" className="bonus-title" />
+      <ScrollBanner title="ボーナスロール！" className="bonus-title" />
       <div className="trigger-card" style={{ borderColor:color }}>
         <span className="trigger-emoji">{FACE_EMOJI[trigger]}{FACE_EMOJI[trigger]}{FACE_EMOJI[trigger]}</span>
         <span>{FACE_LABEL[trigger]} ぞろ目</span>
@@ -1096,7 +1096,7 @@ function AttackSelect({ opponent, bonusResult, stage=3, ignoreShield=false, onCa
   return (
     <div className="screen attack-screen" style={{ backgroundImage:`url("${IMG}BG_Attack.png")` }}>
       <div className="mini-bar">
-        <button className="ghost-btn" onClick={onCancel}>← {opponent.name}の村</button>
+        <button className="ghost-btn" onClick={onCancel}>← 戻る</button>
         <span className="foe-coins"><Img src={IMG+'Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponent.coins)}</span>
         <button className="ghost-btn danger" onClick={onCancel}>逃げる</button>
       </div>
@@ -1126,7 +1126,7 @@ function AttackSelect({ opponent, bonusResult, stage=3, ignoreShield=false, onCa
         <div className="predict-frame">
           <div>💥 破壊成功時: 相手コインの約 <b>{rate}%</b> 獲得</div>
           <div>🛡️ シールド時: 相手コインの約 <b>7%</b> 獲得</div>
-          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label}（ダメージ {bonusResult.damage||0}）</div>}
+          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label} ダメージ{bonusResult.damage||0}</div>}
         </div>
       </div>
 
@@ -1160,7 +1160,6 @@ function AttackResult({ result, onNext, opponentName }) {
           <Img src={IMG+'Koban_Large.png'} className="rc-icon" fallback={<span>🪙</span>} />
           <span className="gold-text">+{fmt(display)}</span>
         </div>
-        <div className="result-rate">（相手コインの {success ? Math.round((result.rate||0.25)*100) : 7}%）</div>
         <div className="result-react">{success ? `😡 ${foe}: 怒り` : `😅 ${foe}: セーフ`}</div>
         <button className="big-btn green-btn" onClick={onNext}>次へ →</button>
       </div>
@@ -1281,7 +1280,7 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
               <button className="big-btn green-btn" onClick={()=>onReceive(total, boxRewards)}>受け取る！</button>
             </div>
           </div>
-        : <div className="steal-progress">あと {picksLeft} か所盗める</div>}
+        : null}
 
       <div className="steal-chara"><Img src={IMG+'Chara_NinjaMonkey.png'} fallback={<span style={{fontSize:64}}>🐒</span>} /></div>
     </div>
@@ -1318,14 +1317,14 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
     setVillage(nv);
     setTappedId(null);
     grantRolls && grantRolls(25);           // ステージクリア報酬：ダイスロール
-    showToast(headStart>0 ? '次のステージへ！ 🎲+25 ＆ 大黒天の加護で建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
+    showToast(headStart>0 ? '次のステージへ！ 🎲+25 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
   };
 
   const costOf = (it) => it.level < itemMax(it) ? Math.round(buildCost(it.level, game.stage) * (1 - buildDiscount)) : 0;
 
   // Tapping a building (or its card) levels it up — no separate build button.
   const build = (it) => {
-    if (it.level >= itemMax(it)) { showToast(`${it.emoji} は完成済み`); return; }
+    if (it.level >= itemMax(it)) return;
     const cost = costOf(it);
     if (game.coins < cost) { showToast('コインが足りません'); return; }
     spendCoins(cost);
@@ -1346,7 +1345,7 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
   return (
     <div className="screen castle-screen" style={{ backgroundImage:`url("${CASTLE_BG[castleType]}")` }}>
       <TopBar coins={game.coins} shields={game.shields} />
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← ロール画面に戻る</button></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button></div>
       <ScrollBanner title={`ステージ ${game.stage}`} className="castle-title" />
 
       {/* village — tap a building to level it up */}
@@ -1365,7 +1364,7 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
         })}
       </div>
 
-      <div className="build-hint">🔨 建物カードをタップしてレベルアップ！ 全部完成でステージクリア</div>
+      <div className="build-hint">🔨 タップしてレベルアップ！</div>
 
       {/* build cards — TAP a card to build/level up that item */}
       <div className="part-cards">
@@ -1389,7 +1388,6 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
       {stageComplete &&
         <div className="stage-clear">
           <div className="sc-title">🎉 ステージクリア！</div>
-          <div className="sc-sub">村が完成しました！</div>
           <button className="big-btn gold-btn" onClick={goNextStage}>次のステージへ →</button>
           <button className="big-btn green-btn small" onClick={onBack}>ロール画面に戻る</button>
         </div>}
@@ -1496,13 +1494,13 @@ const CHARACTERS = [
   { id:'akaoni',      name:'赤鬼',         rank:'rare',   unlockStage:7,  desc:'アタック獲得コイン+18%',     effect:{ attackMult:1.18 } },
   { id:'bakedanuki',  name:'化け狸',       rank:'rare',   unlockStage:7,  desc:'宝箱のピース獲得+25%',       effect:{ pieceBonus:0.25 } },
   // EPIC（複合・特殊）
-  { id:'kagekunoichi',name:'影のくノ一',   rank:'epic',   unlockStage:8,  desc:'スティールで選ばなかった4か所目も自動獲得＋獲得+10%', effect:{ stealLastSpot:true, stealMult:1.10 } },
-  { id:'ashuramusha', name:'阿修羅武者',   rank:'epic',   unlockStage:8,  desc:'アタックが相手シールドを無視して必ず成功＋獲得+15%', effect:{ ignoreShield:true, attackMult:1.15 } },
-  { id:'daikokuten',  name:'大黒天',       rank:'epic',   unlockStage:9,  desc:'建設費20%割引＋新ステージで建物1つがLv+1', effect:{ buildDiscount:0.20, headStartLevels:1 } },
-  { id:'takarabune',  name:'七福神の宝船', rank:'epic',   unlockStage:9,  desc:'小判ぞろ目コイン+25%＋宝箱ピース+20%',     effect:{ coinMult:1.25, pieceBonus:0.20 } },
+  { id:'kagekunoichi',name:'影のくノ一',   rank:'epic',   unlockStage:8,  desc:'スティール+1か所＋獲得+10%', effect:{ stealLastSpot:true, stealMult:1.10 } },
+  { id:'ashuramusha', name:'阿修羅武者',   rank:'epic',   unlockStage:8,  desc:'アタック必中＋獲得+15%', effect:{ ignoreShield:true, attackMult:1.15 } },
+  { id:'daikokuten',  name:'大黒天',       rank:'epic',   unlockStage:9,  desc:'建設20%割引＋建物Lv+1', effect:{ buildDiscount:0.20, headStartLevels:1 } },
+  { id:'takarabune',  name:'七福神の宝船', rank:'epic',   unlockStage:9,  desc:'小判ぞろ目+25%＋ピース+20%',     effect:{ coinMult:1.25, pieceBonus:0.20 } },
   // LEGEND（切り札・複合大）
-  { id:'ryujin',      name:'昇り龍神',     rank:'legend', unlockStage:10, desc:'全獲得コイン+30%＋ジャックポット強化',     effect:{ coinMult:1.30, stealMult:1.30, attackMult:1.30, jackpotBonus:0.5 } },
-  { id:'daitengu',    name:'金の大天狗',   rank:'legend', unlockStage:10, desc:'20%で無料ロール＋建設25%割引＋宝箱ピース+30%', effect:{ freeRollChance:0.20, buildDiscount:0.25, pieceBonus:0.30 } },
+  { id:'ryujin',      name:'昇り龍神',     rank:'legend', unlockStage:10, desc:'全獲得+30%＋ジャックポット+50%',     effect:{ coinMult:1.30, stealMult:1.30, attackMult:1.30, jackpotBonus:0.5 } },
+  { id:'daitengu',    name:'金の大天狗',   rank:'legend', unlockStage:10, desc:'無料ロール20%＋建設25%割引＋ピース+30%', effect:{ freeRollChance:0.20, buildDiscount:0.25, pieceBonus:0.30 } },
 ];
 const CHAR_BY_ID = Object.fromEntries(CHARACTERS.map(c => [c.id, c]));
 // localStorage JSON ヘルパー（既存の try/catch 方針に倣う）
@@ -1632,8 +1630,8 @@ function CharactersScreen({ ownedPieces, equipped, onEquip, onBack, stage }) {
       <div className="char-equip-banner">
         {eqChar
           ? <><Img src={charThumb(eqChar.id)} className="ceb-img" fallback={<span style={{fontSize:32}}>🧙</span>} />
-              <div className="ceb-info"><div className="ceb-label">装備中</div><div className="ceb-name">{eqChar.name}</div><div className="ceb-desc">{eqChar.desc}</div></div></>
-          : <div className="ceb-empty">仲間を装備すると常に効果が発動します</div>}
+              <div className="ceb-info"><div className="ceb-label">装備中</div><div className="ceb-name">{eqChar.name}</div></div></>
+          : <div className="ceb-empty">仲間を装備しよう</div>}
       </div>
       <div className="sheet-scroll">
         {ranks.map(rk => {
@@ -1696,33 +1694,29 @@ const CLAN_MATES = [
   { name:'花丸', emoji:'🦊', img:'Chara_NinjaFox.png' }, { name:'黒助', emoji:'🐕', img:'Chara_NinjaDog.png' },
   { name:'参乃', emoji:'🐒', img:'Chara_NinjaMonkey.png' }, { name:'鉄丸', emoji:'🤖', img:'Chara_RoboNinja.png' },
 ];
+// 城HPが75/50/25%を下回るたびに中間報酬（0%＝撃破の報酬は claim() 側で別途付与）
+const RAID_MILESTONE_REWARD = { 75:50000, 50:100000, 25:150000 };
+const RAID_MILESTONES = [75, 50, 25];
 function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spendTicket, raid, setRaid }) {
-  const { hp, defeated, claimed, log } = raid;   // レイド進行はApp保持（再入場でリセットしない）
-
-  // mock allies chip away over time
-  useEffect(() => {
-    if (defeated) return;
-    const id = setInterval(() => {
-      setRaid(r => {
-        if (r.defeated || r.hp <= 0) return r;
-        const m = CLAN_MATES[Math.floor(Math.random()*CLAN_MATES.length)];
-        const dmg = 2 + Math.floor(Math.random()*4);
-        return { ...r, hp: Math.max(0, r.hp - dmg), log:`${m.emoji} ${m.name} が ${dmg}% 削った！` };
-      });
-    }, 2500);
-    return () => clearInterval(id);
-  }, [defeated, setRaid]);
+  const { hp, defeated, claimed, log, milestonesHit=[] } = raid;   // レイド進行はApp保持（再入場でリセットしない）
 
   useEffect(() => { if (hp<=0 && !defeated) setRaid(r => ({ ...r, defeated:true, log:'🎉 妖魔城 撃破！一族の勝利！' })); }, [hp, defeated, setRaid]);
 
   const attack = () => {
     if (defeated) return;
-    if (tickets <= 0) { showToast('レイドチケット🎟️が必要（ゾロ目小判で入手）'); return; }
+    if (tickets <= 0) { showToast('レイドチケット🎟️が必要'); return; }
     spendTicket();
     const dmg = 6 + Math.floor(Math.random()*8);
-    setRaid(r => ({ ...r, hp: Math.max(0, r.hp - dmg), log:`🥷 あなたが ${dmg}% 削った！（🎟️-1）` }));
+    const nextHp = Math.max(0, hp - dmg);
+    const newlyHit = RAID_MILESTONES.filter(m => hp > m && nextHp <= m && !milestonesHit.includes(m));
+    if (newlyHit.length) {
+      const bonus = newlyHit.reduce((s,m) => s + RAID_MILESTONE_REWARD[m], 0);
+      addCoins(bonus);
+      showToast(`🏯 城HP ${newlyHit[newlyHit.length-1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
+    }
+    setRaid(r => ({ ...r, hp: nextHp, log:`🥷 あなたが ${dmg}% 削った！`, milestonesHit:[...(r.milestonesHit||[]), ...newlyHit] }));
   };
-  const claim = () => { if (claimed) return; setRaid(r => ({ ...r, claimed:true })); addCoins(500000); grantRolls && grantRolls(30); showToast('レイド報酬 +500,000 🪙 ＆ 🎲ロール +30'); };
+  const claim = () => { if (claimed) return; setRaid(r => ({ ...r, claimed:true })); addCoins(500000); grantRolls && grantRolls(30); showToast('🎲 ロール +30 獲得！'); };
 
   return (
     <div className="screen sheet-screen" style={{ backgroundImage:`url("${IMG}BG_Attack.png")` }}>
@@ -1734,15 +1728,17 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
           <Img src={IMG+'Boss_Castle.png'} className={"raid-castle " + (defeated?'broken':'')} fallback={<span style={{fontSize:110}}>🏯</span>} />
           {defeated && <Img src={IMG+'Effect_Attack.png'} className="raid-fx" fallback={<div/>} />}
         </div>
-        <div className="raid-hpbar"><div className="raid-hpfill" style={{ width:hp+'%' }} /><span className="raid-hptext">城HP {hp}%</span></div>
+        <div className="raid-hpbar-frame">
+          <div className="raid-hpbar"><div className="raid-hpfill" style={{ width:hp+'%' }} /><span className="raid-hptext">城HP {hp}%</span></div>
+        </div>
         <div className="raid-log">{log}</div>
         <div className="clan-mates">
           {CLAN_MATES.map(m => <div key={m.name} className="mate"><Img src={IMG+m.img} className="mate-ico-img" fallback={<span className="mate-ico">{m.emoji}</span>} /><span className="mate-name">{m.name}</span></div>)}
-          <div className="mate you"><span className="mate-ico">🥷</span><span className="mate-name">あなた</span></div>
+          <div className="mate you"><Img src={IMG+'UI_PlayerIcon.png'} className="mate-ico-img" fallback={<span className="mate-ico">🥷</span>} /><span className="mate-name">あなた</span></div>
         </div>
         {!defeated
-          ? <button className={"big-btn " + (tickets>0?'red-btn':'disabled')} onClick={attack}>攻撃する！（🎟️1消費）</button>
-          : <button className={"big-btn " + (claimed?'disabled':'gold-btn')} disabled={claimed} onClick={claim}>{claimed?'受取済み':'報酬を受け取る 💰500,000'}</button>}
+          ? <button className={"big-btn red-btn" + (tickets>0?'':' disabled')} onClick={attack}>攻撃する！ 🎟️×1</button>
+          : <button className={"big-btn gold-btn" + (claimed?' disabled':'')} disabled={claimed} onClick={claim}>{claimed?'受取済み':'報酬を受け取る 💰500,000'}</button>}
         {!defeated && tickets<=0 && <div className="raid-log" style={{marginTop:8}}>🎟️チケットはゾロ目小判で入手できます</div>}
       </div>
     </div>
@@ -1831,15 +1827,14 @@ function InviteScreen({ onBack, showToast, grantRolls, addCoins }) {
     setClaimed(c => [...c, i]);
     if (reward.kind==='roll' && grantRolls) grantRolls(reward.amt||0);
     else if (reward.kind==='coin' && addCoins) addCoins(reward.amt||0);
-    showToast('招待報酬を受け取りました（'+rewardLabel(reward)+'）');
+    showToast('招待報酬を受け取りました！');
   };
   return (
     <div className="screen sheet-screen">
       <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">👥 友達を招待</span></div>
       <div className="invite-hero">
         <div className="invite-code">招待コード： <b>NINJA-7F3K</b></div>
-        <button className="big-btn green-btn" onClick={()=>showToast('招待リンクをコピーしました（モック）')}>招待リンクをコピー</button>
-        <div className="invite-note">友達が下の条件を達成すると報酬がもらえる（段階付与）</div>
+        <button className="big-btn green-btn" onClick={()=>showToast('リンクをコピーしました')}>招待リンクをコピー</button>
       </div>
       <div className="sheet-scroll">
         {INVITE_MILES.map((m,i) => {
@@ -1943,7 +1938,6 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
           </div>
         </div>
 
-        <div className="shop-note">※ モック。課金パックは無償付与、こばん商品はコインを消費します。</div>
       </div>
     </div>
   );
@@ -2110,7 +2104,7 @@ function ShieldOverlay({ onDone }) {
         <div className="shield-pips">
           {[0,1,2].map(i => <i key={i} className={phase==='fill'?'on':''} style={{ transitionDelay:(i*170)+'ms' }} />)}
         </div>
-        <div className="shield-sub">🛡️ 防御 満タン！ 次の攻撃を防ぐ</div>
+        <div className="shield-sub">🛡️ 次の攻撃を防ぐ</div>
       </div>
     </div>
   );
@@ -2181,7 +2175,7 @@ function App() {
   });
   useEffect(()=>{ lsSet('ndm_charshop', charShop); }, [charShop]);
   // レイド進行はApp側で保持（画面を離れて戻っても城HPがリセットされない）
-  const [raid, setRaid] = useState({ hp:72, defeated:false, claimed:false, log:'一族で巨大城「妖魔城」を攻略せよ！' });
+  const [raid, setRaid] = useState({ hp:100, defeated:false, claimed:false, log:'一族で巨大城「妖魔城」を攻略せよ！', milestonesHit:[] });
   const [bet, setBet] = useState(1);                  // ロールポイント倍率（1〜3）：消費ロール＆報酬に同倍率
   const betRef = useRef(1); betRef.current = bet;      // フロー中の報酬計算で参照（stale closure回避）
   const [auto, setAuto] = useState(qp.has('auto'));   // オートロール（App 側で保持：画面遷移で MainRoll が再マウントされても維持）
@@ -2375,12 +2369,12 @@ function App() {
     if (r.kind==='roll') grantRolls(r.amt||10);
     else if (r.kind==='coin') addCoins(r.amt||0);
     else if (r.kind==='shield') grantShields(r.amt||1);
-    showToast('シーズン報酬を受け取りました（'+rewardLabel(r)+'）');
+    showToast('シーズン報酬を受け取りました！');
   }, [claimedTiers, grantRolls, addCoins, grantShields, showToast]);
   const buyPack = useCallback((p) => {
     if (p.coins) addCoins(p.coins);
     if (p.rolls) grantRolls(p.rolls);
-    showToast(`${p.title} を付与しました（モック）`);
+    showToast(`${p.title} を付与しました`);
   }, [addCoins, grantRolls, showToast]);
 
   const game = { coins, shields, stage, rolls, rollsMax, opponent, useRolls, bet };
@@ -2498,9 +2492,9 @@ function App() {
       {zorumeFace && <ZorumeOverlay faceId={zorumeFace} onComplete={onZorumeComplete} />}
       {multFx && <MultiplierOverlay base={multFx.base} result={multFx.result} summon={multFx.summon} boxReward={multFx.boxReward} pool={BONUS_DICE_TABLES.jackpot} betMult={bet}
         onDone={(total)=>{ const summon = multFx.summon; const boxReward = multFx.boxReward; setMultFx(null); const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus)); addCoins(g); showToast(`ジャックポット！ +${fmt(g)} 🪙`);
-          if (summon) setTimeout(()=>{ addPiecesTo(summon.char.id, summon.amount); const stageNote = summon.char.unlockStage > stage ? `（ステージ${summon.char.unlockStage}で解放）` : ''; showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}${stageNote}`); }, 450);
+          if (summon) setTimeout(()=>{ addPiecesTo(summon.char.id, summon.amount); showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}`); }, 450);
           if (boxReward) setTimeout(()=>{ grantStealRewards([boxReward]); showToast(boxReward.type==='card' ? `🎁 宝箱：${boxReward.card.gold?'★GOLD ':''}カード獲得！` : `🎁 宝箱：${boxReward.char.name}のかけら +${boxReward.amount}`); }, 700); }} />}
-      {shieldFx && <ShieldOverlay onDone={()=>{ setShieldFx(false); grantShields(3); showToast('シールド 満タン！ 🛡️'); }} />}
+      {shieldFx && <ShieldOverlay onDone={()=>{ setShieldFx(false); grantShields(3); }} />}
       <Toast msg={toast} />
     </div>
   );
