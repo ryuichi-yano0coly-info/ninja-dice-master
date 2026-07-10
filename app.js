@@ -254,35 +254,35 @@ const DICE_FACES = {
   COIN: {
     id: 'coin',
     weight: 2,
-    image: IMG + 'DiceFace_Coin.png',
+    image: IMG + 'dice/DiceFace_Coin.png',
     label: 'コイン',
     emoji: '🪙'
   },
   ATTACK: {
     id: 'attack',
     weight: 1,
-    image: IMG + 'DiceFace_Attack.png',
+    image: IMG + 'dice/DiceFace_Attack.png',
     label: 'アタック',
     emoji: '⚔️'
   },
   STEAL: {
     id: 'steal',
     weight: 1,
-    image: IMG + 'DiceFace_Steal.png',
+    image: IMG + 'dice/DiceFace_Steal.png',
     label: 'スティール',
     emoji: '🥷'
   },
   SHIELD: {
     id: 'shield',
     weight: 1,
-    image: IMG + 'DiceFace_Shield.png',
+    image: IMG + 'dice/DiceFace_Shield.png',
     label: 'シールド',
     emoji: '🛡️'
   },
   JACKPOT: {
     id: 'jackpot',
     weight: 1,
-    image: IMG + 'DiceFace_Jackpot.png',
+    image: IMG + 'dice/DiceFace_Jackpot.png',
     label: 'ジャックポット',
     emoji: '⭐'
   }
@@ -418,11 +418,11 @@ const FACE_LABEL = {
   jackpot: 'ジャックポット'
 };
 const FACE_EFFECT = {
-  coin: IMG + 'CoinBurst.png',
-  attack: IMG + 'Effect_Attack.png',
-  steal: IMG + 'Effect_Smoke.png',
-  shield: IMG + 'Effect_Shield.png',
-  jackpot: IMG + 'Effect_Jackpot.png'
+  coin: IMG + 'effect/CoinBurst.png',
+  attack: IMG + 'effect/Effect_Attack.png',
+  steal: IMG + 'effect/Effect_Smoke.png',
+  shield: IMG + 'effect/Effect_Shield.png',
+  jackpot: IMG + 'effect/Effect_Jackpot.png'
 };
 function calculateCoins(results, stage) {
   const baseCoins = stage * 100;
@@ -625,28 +625,28 @@ const CASTLE_ATTACK_PARTS = [{
 const STEAL_LOCATIONS = [{
   id: 'manor',
   label: '屋敷',
-  icon: IMG + 'StealIcon_Manor.png',
+  icon: IMG + 'ui/StealIcon_Manor.png',
   emoji: '🏯',
   coinRange: [30000, 60000],
   boxChance: 0.15
 }, {
   id: 'storehouse',
   label: '蔵',
-  icon: IMG + 'StealIcon_Storehouse.png',
+  icon: IMG + 'ui/StealIcon_Storehouse.png',
   emoji: '🏬',
   coinRange: [50000, 90000],
   boxChance: 0.30
 }, {
   id: 'shrine',
   label: '神社',
-  icon: IMG + 'StealIcon_Shrine.png',
+  icon: IMG + 'ui/StealIcon_Shrine.png',
   emoji: '⛩️',
   coinRange: [10000, 30000],
   boxChance: 0.50
 }, {
   id: 'market',
   label: '城下町',
-  icon: IMG + 'StealIcon_Market.png',
+  icon: IMG + 'ui/StealIcon_Market.png',
   emoji: '🏮',
   coinRange: [25000, 55000],
   boxChance: 0.15
@@ -750,9 +750,9 @@ const freshCastleParts = () => makeCastleParts().map(p => ({
 }));
 const fmt = n => Math.round(n).toLocaleString('en-US');
 const CASTLE_IMG = {
-  himeji: IMG + 'Castle_Himeji.png',
-  windsor: IMG + 'Castle_Windsor.png',
-  tajmahal: IMG + 'Castle_TajMahal.png'
+  himeji: IMG + 'building/Castle_Himeji.png',
+  windsor: IMG + 'building/Castle_Windsor.png',
+  tajmahal: IMG + 'building/Castle_TajMahal.png'
 };
 // 10ステージ＝10テーマ（世界の名所ツアー）。stage1から順に切り替わる。
 const STAGE_THEMES = ['himeji', 'windsor', 'tajmahal', 'egypt', 'china', 'greece', 'aztec', 'russia', 'arabia', 'dragon'];
@@ -771,61 +771,61 @@ const coinBaseForStage = s => {
 const OPPONENTS = [{
   key: 'shogun',
   name: '将軍 徳川',
-  img: 'Opp_Shogun.png',
+  img: 'opp/Opp_Shogun.png',
   coins: 2200000,
   shields: 2
 }, {
   key: 'daimyo',
   name: '大名 織田',
-  img: 'Opp_Daimyo.png',
+  img: 'opp/Opp_Daimyo.png',
   coins: 1300000,
   shields: 2
 }, {
   key: 'merchant',
   name: '豪商 越後屋',
-  img: 'Opp_Merchant.png',
+  img: 'opp/Opp_Merchant.png',
   coins: 820000,
   shields: 1
 }, {
   key: 'general',
   name: '侍大将 武田',
-  img: 'Opp_General.png',
+  img: 'opp/Opp_General.png',
   coins: 520000,
   shields: 1
 }, {
   key: 'tanaka',
   name: '城主 田中',
-  img: 'Opp_LordTanaka.png',
+  img: 'opp/Opp_LordTanaka.png',
   coins: 300000,
   shields: 1
 }, {
   key: 'ninja',
   name: '忍者頭 服部',
-  img: 'Opp_NinjaChief.png',
+  img: 'opp/Opp_NinjaChief.png',
   coins: 210000,
   shields: 1
 }, {
   key: 'kunoichi',
   name: 'くノ一 あやめ',
-  img: 'Opp_Kunoichi.png',
+  img: 'opp/Opp_Kunoichi.png',
   coins: 150000,
   shields: 0
 }, {
   key: 'ronin',
   name: '浪人 佐々木',
-  img: 'Opp_Ronin.png',
+  img: 'opp/Opp_Ronin.png',
   coins: 78000,
   shields: 0
 }, {
   key: 'ashigaru',
   name: '足軽 権兵衛',
-  img: 'Opp_Ashigaru.png',
+  img: 'opp/Opp_Ashigaru.png',
   coins: 36000,
   shields: 0
 }, {
   key: 'apprentice',
   name: '見習い 小太郎',
-  img: 'Opp_Apprentice.png',
+  img: 'opp/Opp_Apprentice.png',
   coins: 12000,
   shields: 0
 }];
@@ -852,32 +852,32 @@ const CASTLE_NAME = {
 };
 // 城テーマごとの建築段階画像（最後が完成形）
 const CASTLE_STAGES = {
-  himeji: [IMG + 'Castle_Build_1.png', IMG + 'Castle_Build_2.png', IMG + 'Castle_Build_3.png', IMG + 'Castle_Build_4.png', IMG + 'Castle_Himeji.png'],
-  windsor: [IMG + 'Windsor_Build_1.png', IMG + 'Windsor_Build_2.png', IMG + 'Castle_Windsor.png'],
-  tajmahal: [IMG + 'Taj_Build_1.png', IMG + 'Taj_Build_2.png', IMG + 'Castle_TajMahal.png']
+  himeji: [IMG + 'building/Castle_Build_1.png', IMG + 'building/Castle_Build_2.png', IMG + 'building/Castle_Build_3.png', IMG + 'building/Castle_Build_4.png', IMG + 'building/Castle_Himeji.png'],
+  windsor: [IMG + 'building/Windsor_Build_1.png', IMG + 'building/Windsor_Build_2.png', IMG + 'building/Castle_Windsor.png'],
+  tajmahal: [IMG + 'building/Taj_Build_1.png', IMG + 'building/Taj_Build_2.png', IMG + 'building/Castle_TajMahal.png']
 };
 // 建設画面の背景（城テーマに合わせる）
 const CASTLE_BG = {
-  himeji: IMG + 'BG_Castle.png',
-  windsor: IMG + 'BG_Castle_Windsor.png',
-  tajmahal: IMG + 'BG_Castle_TajMahal.png'
+  himeji: IMG + 'bg/BG_Castle.png',
+  windsor: IMG + 'bg/BG_Castle_Windsor.png',
+  tajmahal: IMG + 'bg/BG_Castle_TajMahal.png'
 };
 // 城テーマごとの付帯建築（蔵/石像/庭園）段階画像。城以外もテーマに一致させる。
 const BUILDING_STAGES = {
   himeji: {
-    storehouse: [IMG + 'Build_Storehouse_1.png', IMG + 'Build_Storehouse_2.png', IMG + 'Build_Storehouse_3.png'],
-    statue: [IMG + 'Build_Statue_1.png', IMG + 'Build_Statue_2.png', IMG + 'Build_Statue_3.png'],
-    garden: [IMG + 'Build_Garden_1.png', IMG + 'Build_Garden_2.png', IMG + 'Build_Garden_3.png']
+    storehouse: [IMG + 'building/Build_Storehouse_1.png', IMG + 'building/Build_Storehouse_2.png', IMG + 'building/Build_Storehouse_3.png'],
+    statue: [IMG + 'building/Build_Statue_1.png', IMG + 'building/Build_Statue_2.png', IMG + 'building/Build_Statue_3.png'],
+    garden: [IMG + 'building/Build_Garden_1.png', IMG + 'building/Build_Garden_2.png', IMG + 'building/Build_Garden_3.png']
   },
   windsor: {
-    storehouse: [IMG + 'Windsor_Storehouse_1.png', IMG + 'Windsor_Storehouse_2.png', IMG + 'Windsor_Storehouse_3.png'],
-    statue: [IMG + 'Windsor_Statue_1.png', IMG + 'Windsor_Statue_2.png', IMG + 'Windsor_Statue_3.png'],
-    garden: [IMG + 'Windsor_Garden_1.png', IMG + 'Windsor_Garden_2.png', IMG + 'Windsor_Garden_3.png']
+    storehouse: [IMG + 'building/Windsor_Storehouse_1.png', IMG + 'building/Windsor_Storehouse_2.png', IMG + 'building/Windsor_Storehouse_3.png'],
+    statue: [IMG + 'building/Windsor_Statue_1.png', IMG + 'building/Windsor_Statue_2.png', IMG + 'building/Windsor_Statue_3.png'],
+    garden: [IMG + 'building/Windsor_Garden_1.png', IMG + 'building/Windsor_Garden_2.png', IMG + 'building/Windsor_Garden_3.png']
   },
   tajmahal: {
-    storehouse: [IMG + 'Taj_Storehouse_1.png', IMG + 'Taj_Storehouse_2.png', IMG + 'Taj_Storehouse_3.png'],
-    statue: [IMG + 'Taj_Statue_1.png', IMG + 'Taj_Statue_2.png', IMG + 'Taj_Statue_3.png'],
-    garden: [IMG + 'Taj_Garden_1.png', IMG + 'Taj_Garden_2.png', IMG + 'Taj_Garden_3.png']
+    storehouse: [IMG + 'building/Taj_Storehouse_1.png', IMG + 'building/Taj_Storehouse_2.png', IMG + 'building/Taj_Storehouse_3.png'],
+    statue: [IMG + 'building/Taj_Statue_1.png', IMG + 'building/Taj_Statue_2.png', IMG + 'building/Taj_Statue_3.png'],
+    garden: [IMG + 'building/Taj_Garden_1.png', IMG + 'building/Taj_Garden_2.png', IMG + 'building/Taj_Garden_3.png']
   }
 };
 // stage4-10 の新テーマを自動登録（画像は <Pfx>_Build_1/2 + Castle_<Pfx>、蔵/石像/庭園は <Pfx>_<Type>_1..3、背景 BG_Castle_<Pfx>）
@@ -914,12 +914,12 @@ const NEW_THEMES = {
 Object.keys(NEW_THEMES).forEach(key => {
   const p = NEW_THEMES[key].pfx;
   CASTLE_NAME[key] = NEW_THEMES[key].name;
-  CASTLE_STAGES[key] = [IMG + p + '_Build_1.png', IMG + p + '_Build_2.png', IMG + 'Castle_' + p + '.png'];
-  CASTLE_BG[key] = IMG + 'BG_Castle_' + p + '.png';
+  CASTLE_STAGES[key] = [IMG + 'building/' + p + '_Build_1.png', IMG + 'building/' + p + '_Build_2.png', IMG + 'building/Castle_' + p + '.png'];
+  CASTLE_BG[key] = IMG + 'bg/BG_Castle_' + p + '.png';
   BUILDING_STAGES[key] = {
-    storehouse: [IMG + p + '_Storehouse_1.png', IMG + p + '_Storehouse_2.png', IMG + p + '_Storehouse_3.png'],
-    statue: [IMG + p + '_Statue_1.png', IMG + p + '_Statue_2.png', IMG + p + '_Statue_3.png'],
-    garden: [IMG + p + '_Garden_1.png', IMG + p + '_Garden_2.png', IMG + p + '_Garden_3.png']
+    storehouse: [IMG + 'building/' + p + '_Storehouse_1.png', IMG + 'building/' + p + '_Storehouse_2.png', IMG + 'building/' + p + '_Storehouse_3.png'],
+    statue: [IMG + 'building/' + p + '_Statue_1.png', IMG + 'building/' + p + '_Statue_2.png', IMG + 'building/' + p + '_Statue_3.png'],
+    garden: [IMG + 'building/' + p + '_Garden_1.png', IMG + 'building/' + p + '_Garden_2.png', IMG + 'building/' + p + '_Garden_3.png']
   };
 });
 // 指定テーマでのその建物の段階配列（城はCASTLE_STAGES、蔵/石像/庭園はBUILDING_STAGES）
@@ -941,7 +941,7 @@ const BUILD_ITEMS = [{
   x: '18%',
   y: '60%',
   w: 112,
-  stages: [IMG + 'Build_Storehouse_1.png', IMG + 'Build_Storehouse_2.png', IMG + 'Build_Storehouse_3.png']
+  stages: [IMG + 'building/Build_Storehouse_1.png', IMG + 'building/Build_Storehouse_2.png', IMG + 'building/Build_Storehouse_3.png']
 }, {
   id: 'statue',
   label: '石像',
@@ -949,7 +949,7 @@ const BUILD_ITEMS = [{
   x: '83%',
   y: '57%',
   w: 92,
-  stages: [IMG + 'Build_Statue_1.png', IMG + 'Build_Statue_2.png', IMG + 'Build_Statue_3.png']
+  stages: [IMG + 'building/Build_Statue_1.png', IMG + 'building/Build_Statue_2.png', IMG + 'building/Build_Statue_3.png']
 }, {
   id: 'garden',
   label: '庭園',
@@ -957,7 +957,7 @@ const BUILD_ITEMS = [{
   x: '50%',
   y: '82%',
   w: 150,
-  stages: [IMG + 'Build_Garden_1.png', IMG + 'Build_Garden_2.png', IMG + 'Build_Garden_3.png']
+  stages: [IMG + 'building/Build_Garden_1.png', IMG + 'building/Build_Garden_2.png', IMG + 'building/Build_Garden_3.png']
 }];
 const itemMax = it => it.stages.length - 1; // top level index (= complete)
 // Coin Master 風の値段感：6桁が当たり前（標準stage3のLv0で約10万コイン）。ステージ・レベルで増加。
@@ -1038,7 +1038,7 @@ function TopBar({
   }, /*#__PURE__*/React.createElement("div", {
     className: "coin-pill"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     fallback: /*#__PURE__*/React.createElement("span", {
       className: "coin-emoji"
     }, "🪙")
@@ -1049,13 +1049,13 @@ function TopBar({
     title: "ショップ",
     onClick: onShop
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Plus.png',
+    src: IMG + 'ui/Icon_Plus.png',
     className: "icon-img",
     fallback: /*#__PURE__*/React.createElement("span", null, "+")
   }))), /*#__PURE__*/React.createElement("div", {
     className: "shield-box"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Shield.png',
+    src: IMG + 'ui/Icon_Shield.png',
     className: "sh-ico-img",
     fallback: /*#__PURE__*/React.createElement("span", {
       className: "sh-ico"
@@ -1078,7 +1078,7 @@ function TopBar({
     title: "昼夜切替",
     onClick: onToggleNight
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Night.png',
+    src: IMG + 'ui/Icon_Night.png',
     className: "icon-img",
     fallback: /*#__PURE__*/React.createElement("span", null, night ? '☀️' : '🌙')
   })), onMenu && /*#__PURE__*/React.createElement("button", {
@@ -1086,7 +1086,7 @@ function TopBar({
     title: "メニュー",
     onClick: onMenu
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Menu.png',
+    src: IMG + 'ui/Icon_Menu.png',
     className: "icon-img",
     fallback: /*#__PURE__*/React.createElement("span", null, "≡")
   }))));
@@ -1101,7 +1101,7 @@ function ScrollBanner({
   return /*#__PURE__*/React.createElement("div", {
     className: "scroll-banner " + (className || '')
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'UI_Scroll.png',
+    src: IMG + 'ui/UI_Scroll.png',
     className: "scroll-bg",
     fallback: /*#__PURE__*/React.createElement("div", {
       className: "scroll-bg-fallback"
@@ -1135,7 +1135,7 @@ function Die({
   return /*#__PURE__*/React.createElement("div", {
     className: cls
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Dice_Normal.png',
+    src: IMG + 'dice/Dice_Normal.png',
     className: "die-body",
     fallback: /*#__PURE__*/React.createElement("div", {
       className: "die-body",
@@ -1385,39 +1385,39 @@ function CharMascot({
 /* 画面左右のサイドレール（旧メニュー＋ボトムナビを左右に分散）。全遷移先へ1タップ。 */
 const SIDE_LEFT = [{
   screen: 'castle',
-  img: 'Icon_Village.png',
+  img: 'ui/Icon_Village.png',
   emoji: '🏯',
   label: '村建設'
 }, {
   screen: 'characters',
-  img: 'Char_maneki_1.png',
+  img: 'char/Char_maneki_1.png',
   emoji: '🥷',
   label: '仲間'
 }, {
   screen: 'collection',
-  img: 'Icon_Card.png',
+  img: 'ui/Icon_Card.png',
   emoji: '📖',
   label: 'カード'
 }, {
   screen: 'clan',
-  img: 'Icon_Clan.png',
+  img: 'ui/Icon_Clan.png',
   emoji: '🗡️',
   label: '討伐',
   badge: 'ticket'
 }];
 const SIDE_RIGHT = [{
   screen: 'shop',
-  img: 'Icon_Shop.png',
+  img: 'ui/Icon_Shop.png',
   emoji: '🛒',
   label: '商店'
 }, {
   screen: 'season',
-  img: 'Icon_Event.png',
+  img: 'ui/Icon_Event.png',
   emoji: '🎫',
   label: '催事'
 }, {
   screen: 'invite',
-  img: 'Icon_Invite.png',
+  img: 'ui/Icon_Invite.png',
   emoji: '👥',
   label: '招待'
 }];
@@ -1440,7 +1440,7 @@ function SideRail({
   }, m.badge === 'ticket' && tickets > 0 && /*#__PURE__*/React.createElement("span", {
     className: "nb-badge"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Ticket.png',
+    src: IMG + 'ui/Icon_Ticket.png',
     className: "nb-badge-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🎟️")
   }), tickets), /*#__PURE__*/React.createElement(Img, {
@@ -1513,7 +1513,7 @@ function MainRoll({
   }).map((_, i) => ({
     id: i,
     left: Math.random() * 100,
-    variant: `Effect_SakuraPetal_${1 + Math.floor(Math.random() * 3)}.png`,
+    variant: `effect/Effect_SakuraPetal_${1 + Math.floor(Math.random() * 3)}.png`,
     drift: -60 + Math.random() * 120,
     spin: 180 + Math.random() * 360,
     size: 18 + Math.random() * 16,
@@ -1761,7 +1761,7 @@ function MainRoll({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen main-screen",
     style: {
-      '--bg': `url("${IMG}${night ? 'BG_Main_Night.png' : 'BG_Main_Day.png'}")`
+      '--bg': `url("${IMG}${night ? 'bg/BG_Main_Night.png' : 'bg/BG_Main_Day.png'}")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-layer"
@@ -1865,7 +1865,7 @@ function MainRoll({
   }, "今回の獲得"), /*#__PURE__*/React.createElement("span", {
     className: "gold-text"
   }, "+", fmt(lastGain)), /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }))), /*#__PURE__*/React.createElement("div", {
     className: "energy-wrap"
@@ -1910,7 +1910,7 @@ function MainRoll({
     className: "fx-layer"
   }, fx.jackpot && /*#__PURE__*/React.createElement(Img, {
     key: 'j' + fx.key,
-    src: IMG + 'Effect_Jackpot.png',
+    src: IMG + 'effect/Effect_Jackpot.png',
     className: "jackpot-fx on",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), coinSpray > 0 && /*#__PURE__*/React.createElement(CoinParticles, {
@@ -1985,7 +1985,7 @@ function ZorumeOverlay({
   }, /*#__PURE__*/React.createElement("div", {
     className: "z-flash"
   }), (() => {
-    const zbg = faceId === 'attack' ? 'BG_Attack.png' : faceId === 'steal' ? 'BG_Steal.png' : 'BG_Bonus.png';
+    const zbg = faceId === 'attack' ? 'bg/BG_Attack.png' : faceId === 'steal' ? 'bg/BG_Steal.png' : 'bg/BG_Bonus.png';
     return /*#__PURE__*/React.createElement("div", {
       className: "z-bg",
       style: {
@@ -2005,7 +2005,7 @@ function ZorumeOverlay({
       animationDelay: `${i * 80}ms`
     }
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Dice_Normal.png',
+    src: IMG + 'dice/Dice_Normal.png',
     className: "die-body",
     fallback: /*#__PURE__*/React.createElement("div", {
       className: "die-body",
@@ -2023,7 +2023,7 @@ function ZorumeOverlay({
   })))), /*#__PURE__*/React.createElement("div", {
     className: "z-banner"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'UI_Scroll.png',
+    src: IMG + 'ui/UI_Scroll.png',
     className: "scroll-bg",
     fallback: /*#__PURE__*/React.createElement("div", {
       className: "scroll-bg-fallback"
@@ -2040,7 +2040,7 @@ function ZorumeOverlay({
   }, FACE_EMOJI[faceId], " ", FACE_LABEL[faceId], " ぞろ目"))), /*#__PURE__*/React.createElement("div", {
     className: "z-chara"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Chara_NinjaDog.png',
+    src: IMG + 'char/Chara_NinjaDog.png',
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 80
@@ -2152,7 +2152,7 @@ function BonusRoll({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen bonus-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Bonus.png")`,
+      backgroundImage: `url("${IMG}bg/BG_Bonus.png")`,
       '--zc': color
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -2170,7 +2170,7 @@ function BonusRoll({
   }, FACE_EMOJI[trigger], FACE_EMOJI[trigger], FACE_EMOJI[trigger]), /*#__PURE__*/React.createElement("span", null, FACE_LABEL[trigger], " ぞろ目")), /*#__PURE__*/React.createElement("div", {
     className: "bonus-base"
   }, "倍率の元金 ", /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "bb-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), " ", /*#__PURE__*/React.createElement("b", {
@@ -2180,7 +2180,7 @@ function BonusRoll({
   }, "（×", bet, "ロールポイント）")), /*#__PURE__*/React.createElement("div", {
     className: "bonus-dice-wrap"
   }, phase === 'result' && /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Jackpot.png',
+    src: IMG + 'effect/Effect_Jackpot.png',
     className: "bonus-flash",
     fallback: /*#__PURE__*/React.createElement("div", null)
   }), /*#__PURE__*/React.createElement(BonusDie3D, {
@@ -2197,7 +2197,7 @@ function BonusRoll({
   }, /*#__PURE__*/React.createElement("span", {
     className: "br-term"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "brf-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), fmt(base)), /*#__PURE__*/React.createElement("span", {
@@ -2284,7 +2284,7 @@ function CoinParticles({
     className: "coin-particles"
   }, parts.map(p => /*#__PURE__*/React.createElement(Img, {
     key: p.id,
-    src: IMG + (p.big ? 'Koban_Large.png' : 'Koban_Small.png'),
+    src: IMG + (p.big ? 'ui/Koban_Large.png' : 'ui/Koban_Small.png'),
     className: "coin-p",
     style: {
       left: p.x0 + '%',
@@ -2345,7 +2345,7 @@ function AttackSelect({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen attack-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Attack.png")`
+      backgroundImage: `url("${IMG}bg/BG_Attack.png")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "mini-bar"
@@ -2355,7 +2355,7 @@ function AttackSelect({
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "foe-coins"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "fc-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "💰")
   }), fmt(opponent.coins)), /*#__PURE__*/React.createElement("button", {
@@ -2390,31 +2390,31 @@ function AttackSelect({
         className: "vi-emoji"
       }, it.emoji)
     }), broke && /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'Effect_Rubble.png',
+      src: IMG + 'effect/Effect_Rubble.png',
       className: "vi-rubble",
       fallback: /*#__PURE__*/React.createElement("div", null)
     }), !hit && /*#__PURE__*/React.createElement("div", {
       className: "target-overlay"
     }, /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'UI_Target.png',
+      src: IMG + 'ui/UI_Target.png',
       className: "reticle",
       fallback: /*#__PURE__*/React.createElement("span", {
         className: "reticle-fallback"
       }, "◎")
     })), isHit && phase === 'burst' && /*#__PURE__*/React.createElement(FrameAnim, {
-      name: "AttackBurst",
+      name: "effect/AttackBurst",
       count: 8,
       interval: 55,
       className: "burstfx",
       onDone: () => setPhase('coin')
     }), isHit && phase === 'coin' && /*#__PURE__*/React.createElement(FrameAnim, {
-      name: "CoinSpray",
+      name: "effect/CoinSpray",
       count: 8,
       interval: 95,
       className: "coinfx",
       onDone: onSprayDone
     }), isHit && phase === 'shield' && /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'Effect_Shield.png',
+      src: IMG + 'effect/Effect_Shield.png',
       className: "vi-shieldfx",
       fallback: /*#__PURE__*/React.createElement("span", {
         style: {
@@ -2433,7 +2433,7 @@ function AttackSelect({
   }, "ボーナス: ", bonusResult.label, " ダメージ", bonusResult.damage || 0))), /*#__PURE__*/React.createElement("div", {
     className: "attack-chara"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Chara_RoboNinja.png',
+    src: IMG + 'char/Chara_RoboNinja.png',
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 70
@@ -2459,7 +2459,7 @@ function AttackResult({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen result-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Attack.png")`
+      backgroundImage: `url("${IMG}bg/BG_Attack.png")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "result-dim"
@@ -2470,7 +2470,7 @@ function AttackResult({
   }, success ? '攻撃成功！！' : 'シールドに阻まれた！'), /*#__PURE__*/React.createElement("div", {
     className: "result-visual"
   }, success ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Castle_Broken.png',
+    src: IMG + 'building/Castle_Broken.png',
     className: "rv-castle",
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
@@ -2478,11 +2478,11 @@ function AttackResult({
       }
     }, "🏚️")
   }), /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Attack.png',
+    src: IMG + 'effect/Effect_Attack.png',
     className: "rv-effect",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })) : /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Shield.png',
+    src: IMG + 'effect/Effect_Shield.png',
     className: "rv-effect big",
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
@@ -2490,7 +2490,7 @@ function AttackResult({
       }
     }, "🛡️")
   }), success && /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'CoinBurst.png',
+    src: IMG + 'effect/CoinBurst.png',
     className: "rv-burst",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), success && /*#__PURE__*/React.createElement("div", {
@@ -2498,7 +2498,7 @@ function AttackResult({
   }, result.damage > 1 ? `建物を計${result.damage}棟 破壊！` : '建物を破壊！'), /*#__PURE__*/React.createElement("div", {
     className: "result-coin"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Large.png',
+    src: IMG + 'ui/Koban_Large.png',
     className: "rc-icon",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), /*#__PURE__*/React.createElement("span", {
@@ -2588,10 +2588,10 @@ function StealScreen({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen steal-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Steal.png")`
+      backgroundImage: `url("${IMG}bg/BG_Steal.png")`
     }
   }, phase === 'intro' && /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Smoke.png',
+    src: IMG + 'effect/Effect_Smoke.png',
     className: "steal-smoke",
     fallback: /*#__PURE__*/React.createElement("div", {
       className: "steal-smoke-fallback"
@@ -2616,7 +2616,7 @@ function StealScreen({
   }, "🥷 ", opponentName), /*#__PURE__*/React.createElement("span", {
     className: "steal-foe-coins"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "fc-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "💰")
   }), fmt(opponentCoins)))), /*#__PURE__*/React.createElement("button", {
@@ -2652,13 +2652,13 @@ function StealScreen({
     }), !p && !isSw && phase === 'selecting' && /*#__PURE__*/React.createElement("div", {
       className: "target-overlay"
     }, /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'UI_Target.png',
+      src: IMG + 'ui/UI_Target.png',
       className: "reticle steal",
       fallback: /*#__PURE__*/React.createElement("span", {
         className: "reticle-fallback"
       }, "◎")
     })), isSw && /*#__PURE__*/React.createElement(FrameAnim, {
-      name: "StealSwipe",
+      name: "effect/StealSwipe",
       count: 7,
       interval: 80,
       className: "stealfx",
@@ -2668,18 +2668,18 @@ function StealScreen({
     }, /*#__PURE__*/React.createElement("span", {
       className: "sc-coin gold-text"
     }, "+", fmt(p.coinGain)), p.hasBox && /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'TreasureBox_Open.png',
+      src: IMG + 'ui/TreasureBox_Open.png',
       className: "sc-loot-box",
       fallback: /*#__PURE__*/React.createElement("span", null, "🎁")
     })), boxGot === it.id && /*#__PURE__*/React.createElement("div", {
       className: "box-get"
     }, /*#__PURE__*/React.createElement(FrameAnim, {
-      name: "Effect_Shine",
+      name: "effect/Effect_Shine",
       count: 8,
       interval: 70,
       className: "shinefx"
     }), /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'TreasureBox_Open.png',
+      src: IMG + 'ui/TreasureBox_Open.png',
       className: "box-get-img",
       fallback: /*#__PURE__*/React.createElement("span", {
         style: {
@@ -2712,7 +2712,7 @@ function StealScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "sr-head"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'TreasureBox_Open.png',
+    src: IMG + 'ui/TreasureBox_Open.png',
     className: "sr-box-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🎁")
   }), "宝箱の中身"), /*#__PURE__*/React.createElement("div", {
@@ -2745,7 +2745,7 @@ function StealScreen({
   }, "受け取る！"))) : null, /*#__PURE__*/React.createElement("div", {
     className: "steal-chara"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Chara_NinjaMonkey.png',
+    src: IMG + 'char/Chara_NinjaMonkey.png',
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 64
@@ -2872,7 +2872,7 @@ function CastleScreen({
     }), done && /*#__PURE__*/React.createElement("span", {
       className: "vi-check"
     }, "✓"), tappedId === it.id && /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'CoinBurst.png',
+      src: IMG + 'effect/CoinBurst.png',
       className: "vi-burst",
       fallback: /*#__PURE__*/React.createElement("div", null)
     }));
@@ -2914,7 +2914,7 @@ function CastleScreen({
     }, "✓ 完成") : /*#__PURE__*/React.createElement("div", {
       className: "pc-cost"
     }, /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'Koban_Small.png',
+      src: IMG + 'ui/Koban_Small.png',
       className: "pc-coin-ico",
       fallback: /*#__PURE__*/React.createElement("span", null, "💰")
     }), fmt(costOf(it))));
@@ -2945,19 +2945,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'dog',
     name: '忍犬',
-    img: IMG + 'Chara_NinjaDog.png'
+    img: IMG + 'char/Chara_NinjaDog.png'
   }, {
     id: 'monkey',
     name: '忍猿',
-    img: IMG + 'Chara_NinjaMonkey.png'
+    img: IMG + 'char/Chara_NinjaMonkey.png'
   }, {
     id: 'robo',
     name: 'ロボ忍者',
-    img: IMG + 'Chara_RoboNinja.png'
+    img: IMG + 'char/Chara_RoboNinja.png'
   }, {
     id: 'shuri',
     name: '秘伝手裏剣',
-    img: IMG + 'Card_Shuriken.png',
+    img: IMG + 'card/Card_Shuriken.png',
     gold: true
   }]
 }, {
@@ -2971,19 +2971,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'katana',
     name: '刀',
-    img: IMG + 'DiceFace_Attack.png'
+    img: IMG + 'dice/DiceFace_Attack.png'
   }, {
     id: 'shield',
     name: '盾',
-    img: IMG + 'DiceFace_Shield.png'
+    img: IMG + 'dice/DiceFace_Shield.png'
   }, {
     id: 'smoke',
     name: '煙玉',
-    img: IMG + 'Effect_Smoke.png'
+    img: IMG + 'effect/Effect_Smoke.png'
   }, {
     id: 'jack',
     name: '黄金の星',
-    img: IMG + 'DiceFace_Jackpot.png',
+    img: IMG + 'dice/DiceFace_Jackpot.png',
     gold: true
   }]
 }, {
@@ -2997,19 +2997,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'himeji',
     name: '姫路城',
-    img: IMG + 'Castle_Himeji.png'
+    img: IMG + 'building/Castle_Himeji.png'
   }, {
     id: 'windsor',
     name: 'ウィンザー城',
-    img: IMG + 'Castle_Windsor.png'
+    img: IMG + 'building/Castle_Windsor.png'
   }, {
     id: 'taj',
     name: 'タージ・マハル',
-    img: IMG + 'Castle_TajMahal.png'
+    img: IMG + 'building/Castle_TajMahal.png'
   }, {
     id: 'chest',
     name: '埋蔵金',
-    img: IMG + 'TreasureBox_Open.png',
+    img: IMG + 'ui/TreasureBox_Open.png',
     gold: true
   }]
 }, {
@@ -3023,19 +3023,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'egypt',
     name: 'ピラミッド',
-    img: IMG + 'Castle_Egypt.png'
+    img: IMG + 'building/Castle_Egypt.png'
   }, {
     id: 'china',
     name: '紫禁城',
-    img: IMG + 'Castle_China.png'
+    img: IMG + 'building/Castle_China.png'
   }, {
     id: 'aztec',
     name: '太陽の神殿',
-    img: IMG + 'Castle_Aztec.png'
+    img: IMG + 'building/Castle_Aztec.png'
   }, {
     id: 'sphinx',
     name: '黄金のスフィンクス',
-    img: IMG + 'Card_Sphinx.png',
+    img: IMG + 'card/Card_Sphinx.png',
     gold: true
   }]
 }, {
@@ -3049,23 +3049,23 @@ const CARD_SETS = [{
   cards: [{
     id: 'greece',
     name: 'パルテノン神殿',
-    img: IMG + 'Castle_Greece.png'
+    img: IMG + 'building/Castle_Greece.png'
   }, {
     id: 'russia',
     name: '聖ワシリイ大聖堂',
-    img: IMG + 'Castle_Russia.png'
+    img: IMG + 'building/Castle_Russia.png'
   }, {
     id: 'arabia',
     name: '砂漠の宮殿',
-    img: IMG + 'Castle_Arabia.png'
+    img: IMG + 'building/Castle_Arabia.png'
   }, {
     id: 'dragoncastle',
     name: '龍宮天空城',
-    img: IMG + 'Castle_Dragon.png'
+    img: IMG + 'building/Castle_Dragon.png'
   }, {
     id: 'risingdragon',
     name: '昇り龍',
-    img: IMG + 'Card_GoldDragon.png',
+    img: IMG + 'card/Card_GoldDragon.png',
     gold: true
   }]
 }, {
@@ -3079,19 +3079,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'shogun',
     name: '将軍 徳川',
-    img: IMG + 'Opp_Shogun.png'
+    img: IMG + 'opp/Opp_Shogun.png'
   }, {
     id: 'daimyo',
     name: '大名 織田',
-    img: IMG + 'Opp_Daimyo.png'
+    img: IMG + 'opp/Opp_Daimyo.png'
   }, {
     id: 'general',
     name: '侍大将 武田',
-    img: IMG + 'Opp_General.png'
+    img: IMG + 'opp/Opp_General.png'
   }, {
     id: 'helm',
     name: '覇王の兜',
-    img: IMG + 'Card_Helm.png',
+    img: IMG + 'card/Card_Helm.png',
     gold: true
   }]
 }, {
@@ -3105,19 +3105,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'hattori',
     name: '忍者頭 服部',
-    img: IMG + 'Opp_NinjaChief.png'
+    img: IMG + 'opp/Opp_NinjaChief.png'
   }, {
     id: 'ayame',
     name: 'くノ一 あやめ',
-    img: IMG + 'Opp_Kunoichi.png'
+    img: IMG + 'opp/Opp_Kunoichi.png'
   }, {
     id: 'lordtanaka',
     name: '城主 田中',
-    img: IMG + 'Opp_LordTanaka.png'
+    img: IMG + 'opp/Opp_LordTanaka.png'
   }, {
     id: 'scroll',
     name: '秘伝の巻物',
-    img: IMG + 'Card_Scroll.png',
+    img: IMG + 'card/Card_Scroll.png',
     gold: true
   }]
 }, {
@@ -3131,23 +3131,23 @@ const CARD_SETS = [{
   cards: [{
     id: 'echigoya',
     name: '豪商 越後屋',
-    img: IMG + 'Opp_Merchant.png'
+    img: IMG + 'opp/Opp_Merchant.png'
   }, {
     id: 'sasaki',
     name: '浪人 佐々木',
-    img: IMG + 'Opp_Ronin.png'
+    img: IMG + 'opp/Opp_Ronin.png'
   }, {
     id: 'gonbei',
     name: '足軽 権兵衛',
-    img: IMG + 'Opp_Ashigaru.png'
+    img: IMG + 'opp/Opp_Ashigaru.png'
   }, {
     id: 'kotaro',
     name: '見習い 小太郎',
-    img: IMG + 'Opp_Apprentice.png'
+    img: IMG + 'opp/Opp_Apprentice.png'
   }, {
     id: 'kobanpile',
     name: '小判の山',
-    img: IMG + 'Card_KobanPile.png',
+    img: IMG + 'card/Card_KobanPile.png',
     gold: true
   }]
 }];
@@ -3216,8 +3216,8 @@ const CHAR_RANKS = {
   }
 };
 // キャラの連番アイドルフレーム（1..6）。サムネは _1。
-const charFrames = id => [1, 2, 3, 4, 5, 6].map(n => IMG + 'Char_' + id + '_' + n + '.png');
-const charThumb = id => IMG + 'Char_' + id + '_1.png';
+const charFrames = id => [1, 2, 3, 4, 5, 6].map(n => IMG + 'char/Char_' + id + '_' + n + '.png');
+const charThumb = id => IMG + 'char/Char_' + id + '_1.png';
 
 // effect 既定値。装備キャラの effect をこれにマージして使う。
 const NO_EFFECT = {
@@ -3473,6 +3473,75 @@ const activeEffect = (equippedId, level = 1) => {
 const piecesFor = (rank, source) => {
   const [lo, hi] = source === 'jackpot' ? rank === 'legend' ? [12, 20] : [25, 45] : rank === 'legend' ? [5, 10] : [10, 20]; // box
   return lo + Math.floor(Math.random() * (hi - lo + 1));
+};
+// --- 仲間ガチャ（商店）。排出は全キャラ対象（ステージ未到達は既存の解放待ち扱い） ---
+const GACHA_TIERS = [{
+  key: 'normal',
+  name: 'ノーマルガチャ',
+  price: 100000,
+  odds: {
+    normal: 0.73,
+    rare: 0.25,
+    epic: 0.01,
+    legend: 0.01
+  },
+  pieces: {
+    normal: [15, 30],
+    rare: [10, 20],
+    epic: [5, 10],
+    legend: [3, 5]
+  }
+}, {
+  key: 'rare',
+  name: 'レアガチャ',
+  price: 500000,
+  odds: {
+    normal: 0.27,
+    rare: 0.60,
+    epic: 0.10,
+    legend: 0.03
+  },
+  pieces: {
+    normal: [40, 70],
+    rare: [25, 45],
+    epic: [15, 25],
+    legend: [8, 12]
+  }
+}, {
+  key: 'super',
+  name: 'スーパーガチャ',
+  price: 1000000,
+  odds: {
+    rare: 0.30,
+    epic: 0.50,
+    legend: 0.20
+  },
+  pieces: {
+    rare: [50, 80],
+    epic: [30, 50],
+    legend: [15, 25]
+  }
+}];
+const rollGacha = tier => {
+  const keys = Object.keys(tier.odds);
+  const r = Math.random();
+  let acc = 0,
+    rank = keys[keys.length - 1]; // 端数で加算しきれなかった場合のフォールバック＝最後のキー
+  for (const k of keys) {
+    acc += tier.odds[k];
+    if (r < acc) {
+      rank = k;
+      break;
+    }
+  }
+  const pool = CHARACTERS.filter(c => c.rank === rank);
+  const char = pool[Math.floor(Math.random() * pool.length)];
+  const [lo, hi] = tier.pieces[rank];
+  return {
+    char,
+    amount: lo + Math.floor(Math.random() * (hi - lo + 1)),
+    rank
+  };
 };
 // 解放済み（unlockStage<=stage）のキャラからランダム抽選。未所持を優先。
 const pickCharForPieces = (stage, ownedPieces) => {
@@ -3812,71 +3881,71 @@ const RAID_BOSSES = [{
   n: 1,
   theme: 'himeji',
   name: '姫路の妖魔',
-  img: 'Boss_himeji.png',
-  bg: 'BG_Raid_himeji.png',
+  img: 'boss/Boss_himeji.png',
+  bg: 'bg/BG_Raid_himeji.png',
   emoji: '🏯'
 }, {
   n: 2,
   theme: 'windsor',
   name: '鋼鉄の騎士王',
-  img: 'Boss_windsor.png',
-  bg: 'BG_Raid_windsor.png',
+  img: 'boss/Boss_windsor.png',
+  bg: 'bg/BG_Raid_windsor.png',
   emoji: '🛡️'
 }, {
   n: 3,
   theme: 'tajmahal',
   name: '白亜の魔宮神',
-  img: 'Boss_tajmahal.png',
-  bg: 'BG_Raid_tajmahal.png',
+  img: 'boss/Boss_tajmahal.png',
+  bg: 'bg/BG_Raid_tajmahal.png',
   emoji: '🕌'
 }, {
   n: 4,
   theme: 'egypt',
   name: '黄金のファラオ',
-  img: 'Boss_egypt.png',
-  bg: 'BG_Raid_egypt.png',
+  img: 'boss/Boss_egypt.png',
+  bg: 'bg/BG_Raid_egypt.png',
   emoji: '🐫'
 }, {
   n: 5,
   theme: 'china',
   name: '紫禁の龍帝',
-  img: 'Boss_china.png',
-  bg: 'BG_Raid_china.png',
+  img: 'boss/Boss_china.png',
+  bg: 'bg/BG_Raid_china.png',
   emoji: '🐉'
 }, {
   n: 6,
   theme: 'greece',
   name: '神殿の巨神',
-  img: 'Boss_greece.png',
-  bg: 'BG_Raid_greece.png',
+  img: 'boss/Boss_greece.png',
+  bg: 'bg/BG_Raid_greece.png',
   emoji: '🏛️'
 }, {
   n: 7,
   theme: 'aztec',
   name: '石造の石神',
-  img: 'Boss_aztec.png',
-  bg: 'BG_Raid_aztec.png',
+  img: 'boss/Boss_aztec.png',
+  bg: 'bg/BG_Raid_aztec.png',
   emoji: '🗿'
 }, {
   n: 8,
   theme: 'russia',
   name: '氷雪の熊将',
-  img: 'Boss_russia.png',
-  bg: 'BG_Raid_russia.png',
+  img: 'boss/Boss_russia.png',
+  bg: 'bg/BG_Raid_russia.png',
   emoji: '🐻'
 }, {
   n: 9,
   theme: 'arabia',
   name: '灼熱の魔神',
-  img: 'Boss_arabia.png',
-  bg: 'BG_Raid_arabia.png',
+  img: 'boss/Boss_arabia.png',
+  bg: 'bg/BG_Raid_arabia.png',
   emoji: '🧞'
 }, {
   n: 10,
   theme: 'dragon',
   name: '覇龍',
-  img: 'Boss_dragon.png',
-  bg: 'BG_Raid_dragon.png',
+  img: 'boss/Boss_dragon.png',
+  bg: 'bg/BG_Raid_dragon.png',
   emoji: '🐲'
 }];
 const RAID_MAX_BOSS = RAID_BOSSES.length; // = MAX_STAGE = 10
@@ -4008,7 +4077,7 @@ function ClanRaidScreen({
       }
     }, bossDef.emoji)
   }), defeated && /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Attack.png',
+    src: IMG + 'effect/Effect_Attack.png',
     className: "raid-fx",
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), /*#__PURE__*/React.createElement("div", {
@@ -4228,11 +4297,11 @@ const SEASON_TIERS = [{
 }];
 // 報酬アイコン（画像）と絵文字フォールバック
 const REWARD_ICON = {
-  roll: 'Icon_Dice.png',
-  coin: 'Koban_Small.png',
-  shield: 'Icon_Shield.png',
-  card: 'Icon_Card.png',
-  cosmetic: 'Icon_Crown.png'
+  roll: 'ui/Icon_Dice.png',
+  coin: 'ui/Koban_Small.png',
+  shield: 'ui/Icon_Shield.png',
+  card: 'ui/Icon_Card.png',
+  cosmetic: 'ui/Icon_Crown.png'
 };
 const REWARD_EMOJI = {
   roll: '🎲',
@@ -4268,7 +4337,7 @@ function SeasonScreen({
   return /*#__PURE__*/React.createElement("div", {
     className: "screen season-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Season.png")`
+      backgroundImage: `url("${IMG}bg/BG_Season.png")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "mini-bar"
@@ -4450,7 +4519,8 @@ function ShopScreen({
   onBuyPiece,
   kobanItems,
   onBuyKoban,
-  charLevels = {}
+  charLevels = {},
+  onBuyGacha
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "screen sheet-screen"
@@ -4464,12 +4534,38 @@ function ShopScreen({
   }, "🛒 Shinobi Mart"), /*#__PURE__*/React.createElement("span", {
     className: "shop-coins"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "sc-koban",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), " ", fmt(coins))), /*#__PURE__*/React.createElement("div", {
     className: "sheet-scroll"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "shop-sec"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "shop-sec-head"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "shop-sec-title"
+  }, "🎰 仲間ガチャ"), /*#__PURE__*/React.createElement("span", {
+    className: "shop-sec-note"
+  }, "高いガチャほど強い仲間が出やすい")), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-list"
+  }, GACHA_TIERS.map(tier => {
+    const poor = coins < tier.price;
+    return /*#__PURE__*/React.createElement("div", {
+      key: tier.key,
+      className: "shop-pack gacha-card gacha-" + tier.key
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "gacha-card-title"
+    }, tier.name), /*#__PURE__*/React.createElement("button", {
+      className: "po-buy gacha-buy " + (poor ? 'poor' : 'buy'),
+      disabled: poor,
+      onClick: () => onBuyGacha(tier)
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Koban_Small.png',
+      className: "po-koban",
+      fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+    }), fmt(tier.price)));
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "shop-sec"
   }, /*#__PURE__*/React.createElement("div", {
     className: "shop-sec-head"
@@ -4523,7 +4619,7 @@ function ShopScreen({
       disabled: disabled,
       onClick: () => onBuyPiece(id)
     }, bought ? '購入済み' : maxed ? 'Lv最大' : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'Koban_Small.png',
+      src: IMG + 'ui/Koban_Small.png',
       className: "po-koban",
       fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
     }), fmt(price.coins))));
@@ -4550,7 +4646,7 @@ function ShopScreen({
       disabled: bought,
       onClick: () => onBuyKoban(it)
     }, bought ? '購入済み' : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
-      src: IMG + 'Koban_Small.png',
+      src: IMG + 'ui/Koban_Small.png',
       className: "po-koban",
       fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
     }), fmt(it.coins))));
@@ -4583,37 +4679,37 @@ function ShopScreen({
 const MENU_ITEMS = [{
   screen: 'castle',
   icon: '🏯',
-  img: 'Icon_Village.png',
+  img: 'ui/Icon_Village.png',
   label: '村建設'
 }, {
   screen: 'characters',
   icon: '🥷',
-  img: 'Char_maneki_1.png',
+  img: 'char/Char_maneki_1.png',
   label: '仲間'
 }, {
   screen: 'collection',
   icon: '📖',
-  img: 'Icon_Card.png',
+  img: 'ui/Icon_Card.png',
   label: 'コレクション'
 }, {
   screen: 'clan',
   icon: '🗡️',
-  img: 'Icon_Clan.png',
+  img: 'ui/Icon_Clan.png',
   label: '一族レイド'
 }, {
   screen: 'season',
   icon: '🎫',
-  img: 'Icon_Event.png',
+  img: 'ui/Icon_Event.png',
   label: 'シーズン'
 }, {
   screen: 'invite',
   icon: '👥',
-  img: 'Icon_Invite.png',
+  img: 'ui/Icon_Invite.png',
   label: '招待'
 }, {
   screen: 'shop',
   icon: '🛒',
-  img: 'Icon_Shop.png',
+  img: 'ui/Icon_Shop.png',
   label: 'ショップ'
 }];
 function MenuOverlay({
@@ -4654,27 +4750,27 @@ function MenuOverlay({
 // ジャックポット6報酬のアイコン（label→画像）。無い場合はemojiにフォールバック。
 const JACKPOT_ICON = {
   '小判雨': {
-    img: IMG + 'Koban_Small.png',
+    img: IMG + 'ui/Koban_Small.png',
     emoji: '🪙'
   },
   'お宝箱': {
-    img: IMG + 'TreasureBox_Open.png',
+    img: IMG + 'ui/TreasureBox_Open.png',
     emoji: '🎁'
   },
   '大当たり': {
-    img: IMG + 'Koban_Large.png',
+    img: IMG + 'ui/Koban_Large.png',
     emoji: '💰'
   },
   'レア確定': {
-    img: IMG + 'Icon_Card.png',
+    img: IMG + 'ui/Icon_Card.png',
     emoji: '🃏'
   },
   '忍者召喚': {
-    img: IMG + 'Chara_NinjaFox.png',
+    img: IMG + 'char/Chara_NinjaFox.png',
     emoji: '🦊'
   },
   '超JP': {
-    img: IMG + 'Icon_Crown.png',
+    img: IMG + 'ui/Icon_Crown.png',
     emoji: '👑'
   }
 };
@@ -4764,7 +4860,7 @@ function MultiplierOverlay({
       if (phase === 'total') finish();
     },
     style: {
-      backgroundImage: `url("${IMG}BG_Jackpot.png")`
+      backgroundImage: `url("${IMG}bg/BG_Jackpot.png")`
     }
   }, phase !== 'spin' && /*#__PURE__*/React.createElement("div", {
     className: "mult-flash"
@@ -4791,7 +4887,7 @@ function MultiplierOverlay({
   })))), phase === 'total' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "mult-base"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Koban_Small.png',
+    src: IMG + 'ui/Koban_Small.png',
     className: "mb-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), " ", fmt(base)), /*#__PURE__*/React.createElement("div", {
@@ -4815,7 +4911,7 @@ function MultiplierOverlay({
   }, /*#__PURE__*/React.createElement("div", {
     className: "jp-box-head"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'TreasureBox_Open.png',
+    src: IMG + 'ui/TreasureBox_Open.png',
     className: "jp-box-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🎁")
   }), "宝箱の中身"), /*#__PURE__*/React.createElement("div", {
@@ -4868,13 +4964,13 @@ function ShieldOverlay({
   }), /*#__PURE__*/React.createElement("div", {
     className: "shield-rays"
   }), /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Effect_Shield.png',
+    src: IMG + 'effect/Effect_Shield.png',
     className: "shield-fx",
     fallback: /*#__PURE__*/React.createElement("div", null)
   }), /*#__PURE__*/React.createElement("div", {
     className: "shield-inner"
   }, /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'Icon_Shield.png',
+    src: IMG + 'ui/Icon_Shield.png',
     className: "shield-big",
     fallback: /*#__PURE__*/React.createElement("span", {
       style: {
@@ -4894,6 +4990,85 @@ function ShieldOverlay({
   }))), /*#__PURE__*/React.createElement("div", {
     className: "shield-sub"
   }, "🛡️ 次の攻撃を防ぐ")));
+}
+
+/* ============================================================
+   GACHA OVERLAY — 仲間ガチャ（商店）の抽選演出
+   ============================================================ */
+function GachaOverlay({
+  tier,
+  char,
+  amount,
+  rank,
+  onDone
+}) {
+  const [phase, setPhase] = useState('shake'); // shake → flash（→flash2 legendのみ）→ reveal
+  const meta = CHAR_RANKS[rank];
+  const legend = rank === 'legend';
+  const timersRef = useRef([]);
+  const skip = () => {
+    timersRef.current.forEach(clearTimeout);
+    SFX.stage();
+    setPhase('reveal');
+  };
+  useEffect(() => {
+    SFX.tap();
+    const T = timersRef.current;
+    T.push(setTimeout(() => {
+      setPhase('flash');
+      SFX.jackpot();
+    }, 1200));
+    if (legend) T.push(setTimeout(() => {
+      setPhase('flash2');
+      SFX.jackpot();
+    }, 1650));
+    T.push(setTimeout(() => {
+      setPhase('reveal');
+      SFX.stage();
+    }, legend ? 2150 : 1650));
+    return () => T.forEach(clearTimeout);
+  }, []);
+  const revealed = phase === 'reveal';
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gacha-overlay",
+    onClick: revealed ? onDone : skip
+  }, phase === 'shake' && /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/TreasureBox_Closed.png',
+    className: "gacha-box-shake",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "gacha-emoji gacha-box-shake"
+    }, "🎁")
+  }), (phase === 'flash' || phase === 'flash2') && /*#__PURE__*/React.createElement("div", {
+    className: "gacha-flash" + (phase === 'flash2' ? ' gacha-flash2' : ''),
+    style: {
+      '--rk': meta.color
+    }
+  }), revealed && /*#__PURE__*/React.createElement("div", {
+    className: "gacha-result",
+    style: {
+      '--rk': meta.color
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "gacha-glow" + (legend ? ' legend' : '')
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-char-face"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: charThumb(char.id),
+    className: "gacha-char-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 52
+      }
+    }, "🧙")
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-char-name"
+  }, char.name), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-rank-tag"
+  }, meta.label), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-amt"
+  }, "🧩 かけら +", amount), /*#__PURE__*/React.createElement("div", {
+    className: "gacha-tap-hint"
+  }, "タップして閉じる")));
 }
 
 /* ============================================================
@@ -4970,6 +5145,7 @@ function App() {
   const [zorumeFace, setZorumeFace] = useState(null);
   const [multFx, setMultFx] = useState(null); // {base, mult} ジャックポット等の倍率演出
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
+  const [gachaFx, setGachaFx] = useState(null); // {tier, char, amount, rank} 仲間ガチャ演出中
   const [toast, setToast] = useState('');
   const [night, setNight] = useState(qp.has('night'));
   // collection / season / cards
@@ -5356,6 +5532,19 @@ function App() {
     }));
     showToast(`${item.label} を購入！`);
   }, [charShop, spendCoins, grantRolls, grantShields, grantTickets, showToast]);
+  // Shinobi Mart: 仲間ガチャ（回数無制限・演出はGachaOverlayが担当）
+  const buyGacha = useCallback(tier => {
+    if (coinsRef.current < tier.price) {
+      showToast('コインが足りません');
+      return;
+    }
+    spendCoins(tier.price);
+    setGachaFx({
+      tier,
+      ...rollGacha(tier)
+    });
+    SFX.tap();
+  }, [spendCoins, showToast]);
 
   // ---- デバッグ：ショップ ----
   const debugResetShop = useCallback(() => {
@@ -5653,7 +5842,8 @@ function App() {
     onBuyPiece: buyCharPieces,
     kobanItems: KOBAN_SHOP,
     onBuyKoban: buyKoban,
-    charLevels: charLevels
+    charLevels: charLevels,
+    onBuyGacha: buyGacha
   }), cardPopup && /*#__PURE__*/React.createElement("div", {
     className: "card-popup",
     key: cardPopup.card.id + (cardPopup.isNew ? '-n' : '-d')
@@ -5724,6 +5914,15 @@ function App() {
       setShieldFx(false);
       grantShields(3);
     }
+  }), gachaFx && /*#__PURE__*/React.createElement(GachaOverlay, {
+    tier: gachaFx.tier,
+    char: gachaFx.char,
+    amount: gachaFx.amount,
+    rank: gachaFx.rank,
+    onDone: () => {
+      addPiecesTo(gachaFx.char.id, gachaFx.amount);
+      setGachaFx(null);
+    }
   }), /*#__PURE__*/React.createElement(Toast, {
     msg: toast
   }));
@@ -5773,7 +5972,7 @@ function LoadingScreen({
   return /*#__PURE__*/React.createElement("div", {
     className: "loading-screen",
     style: {
-      backgroundImage: `url("${IMG}BG_Splash.png")`
+      backgroundImage: `url("${IMG}bg/BG_Splash.png")`
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "load-dim"

@@ -69,12 +69,16 @@ def remove_green_background(input_path: str, output_path: str,
 
 
 def process_directory(input_dir: str, output_dir: str) -> None:
-    """フォルダ内の全画像を一括処理する。"""
-    os.makedirs(output_dir, exist_ok=True)
-
+    """フォルダ内の全画像（サブフォルダ含む）を一括処理する。
+    assets/raw/<genre>/Xxx.png → assets/images/<genre>/Xxx.png のように
+    サブフォルダの相対パスを保ったまま出力する。
+    """
     supported = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp"}
-    files = [f for f in os.listdir(input_dir)
-             if os.path.splitext(f)[1].lower() in supported]
+    files = []
+    for root, _dirs, filenames in os.walk(input_dir):
+        for f in filenames:
+            if os.path.splitext(f)[1].lower() in supported:
+                files.append(os.path.relpath(os.path.join(root, f), input_dir))
 
     if not files:
         print(f"⚠️  {input_dir} に対象ファイルが見つかりません")
@@ -85,17 +89,20 @@ def process_directory(input_dir: str, output_dir: str) -> None:
     print(f"🎯 対象ファイル数: {len(files)}\n")
 
     success = 0
-    for filename in sorted(files):
-        input_path  = os.path.join(input_dir, filename)
+    for rel_path in sorted(files):
+        input_path  = os.path.join(input_dir, rel_path)
+        rel_dir, filename = os.path.split(rel_path)
         output_name = os.path.splitext(filename)[0] + ".png"
-        output_path = os.path.join(output_dir, output_name)
+        output_dir_full = os.path.join(output_dir, rel_dir)
+        os.makedirs(output_dir_full, exist_ok=True)
+        output_path = os.path.join(output_dir_full, output_name)
 
         try:
             remove_green_background(input_path, output_path)
-            print(f"  ✅ {filename}  →  {output_name}")
+            print(f"  ✅ {rel_path}  →  {os.path.join(rel_dir, output_name) if rel_dir else output_name}")
             success += 1
         except Exception as e:
-            print(f"  ❌ {filename}  エラー: {e}")
+            print(f"  ❌ {rel_path}  エラー: {e}")
 
     print(f"\n🎉 完了: {success}/{len(files)} ファイルを変換しました")
 
