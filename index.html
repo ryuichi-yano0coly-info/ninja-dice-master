@@ -188,7 +188,7 @@
        ダイス下端に重ねて配置し、演出（spinning/landed 等）より背後に描画する。 */
     .dice-stage::before {
       content: ''; position: absolute; z-index: 0;
-      width: calc(100% + 24px); aspect-ratio: 1536 / 512;
+      width: calc(100% + 48px); aspect-ratio: 1536 / 512;
       left: 50%; bottom: -42px; transform: translateX(-50%);
       background: url("assets/images/ui/UI_DicePodium.png") center/100% 100% no-repeat;
       filter: drop-shadow(0 10px 12px rgba(0,0,0,.45));
@@ -251,7 +251,7 @@
     /* 既定の3D立体ダイス: --d3 で一辺を可変化（62px固定を廃止）。
        3個＋gap×2 が「画面幅 − レール両側122px − 余裕」に収まるよう clamp で追従させ、
        広い画面では84pxまで拡大してダイスを主役化する（レビュー指摘B1対応） */
-    .dice-row.d3 { gap: 22px; --d3: clamp(60px, calc((100vw - 174px) / 3), 84px); }
+    .dice-row.d3 { gap: 22px; --d3: clamp(56px, calc((100vw - 192px) / 3), 78px); }
     /* perspective は各スロットに置く（間の要素で3Dが潰れないように） */
     .d3-slot { position: relative; perspective: 760px; perspective-origin: 50% 45%; }
     .d3-slot.bonus { perspective: 1100px; }
