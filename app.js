@@ -1999,10 +1999,10 @@ function MainRoll({
           if (f.id === 'coin') idx.add(i);
         });
         setComboFx({
-          cc: '#FFE14D',
+          cc: '#5EE7FF',
           indices: idx,
           kind: 'normal'
-        }); // FACE_COLOR.coin(#D97706)は背景と同化するため明るい金に
+        }); // 背景が暖色/金系のため寒色シアンで縁取る（金系は同化する）
       }
       addCoins(gain);
       setLastGain(gain);

@@ -874,7 +874,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
       // 通常役：コイン面（calculateCoinsが500×枚数を加算している面）のみを控えめにハイライト。コイン0枚なら点灯しない。
       if (coinCount > 0) {
         const idx = new Set(); results.forEach((f,i) => { if (f.id === 'coin') idx.add(i); });
-        setComboFx({ cc: '#FFE14D', indices: idx, kind:'normal' });  // FACE_COLOR.coin(#D97706)は背景と同化するため明るい金に
+        setComboFx({ cc: '#5EE7FF', indices: idx, kind:'normal' });  // 背景が暖色/金系のため寒色シアンで縁取る（金系は同化する）
       }
       addCoins(gain); setLastGain(gain); setGainKey(k=>k+1);
       coinGateRef.current = false;   // 通常役：コイン噴き上げは次ロールをブロックしない（見た目だけ並行再生）
