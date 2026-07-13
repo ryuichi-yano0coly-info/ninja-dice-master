@@ -107,32 +107,32 @@ const ASSAULT_SUMMARY_HOLD = 2200;       // 強襲：サマリー表示から自
    4個以上でのみ「強襲(assault)」「黄金律(goldrule)」の合体役が抽選対象に入る。 */
 const HAND_ODDS = {
   3: [
-    { id:'attack',  p:0.05 },   // アタックぞろ目  ≈5回
-    { id:'steal',   p:0.05 },   // スティールぞろ目 ≈5回
-    { id:'shield',  p:0.05 },   // シールドぞろ目  ≈5回
-    { id:'jackpot', p:0.04 },   // ジャックポットぞろ目 ≈4回
-    { id:'coin',    p:0.05 },   // コインぞろ目    ≈5回
-    { id:'combo',   p:0.05 },   // ジャックポット×2 ≈5回
-  ], // 残り ≈71% は通常役
+    { id:'attack',  p:0.03 },   // アタックぞろ目  ≈3回
+    { id:'steal',   p:0.03 },   // スティールぞろ目 ≈3回
+    { id:'shield',  p:0.03 },   // シールドぞろ目  ≈3回
+    { id:'jackpot', p:0.02 },   // ジャックポットぞろ目 ≈2回
+    { id:'coin',    p:0.03 },   // コインぞろ目    ≈3回
+    { id:'combo',   p:0.03 },   // ジャックポット×2 ≈3回
+  ], // 残り ≈83% は通常役
   4: [
-    { id:'attack',  p:0.05 },
-    { id:'steal',   p:0.05 },
-    { id:'shield',  p:0.05 },
-    { id:'jackpot', p:0.04 },
-    { id:'coin',    p:0.05 },
-    { id:'combo',   p:0.04 },   // ジャックポット×2 ≈4回（合体枠が増えるぶん微減）
-    { id:'assault',  p:0.03 },  // 強襲（合体）
-    { id:'goldrule', p:0.03 },  // 黄金律（合体）
+    { id:'attack',  p:0.03 },
+    { id:'steal',   p:0.03 },
+    { id:'shield',  p:0.03 },
+    { id:'jackpot', p:0.02 },
+    { id:'coin',    p:0.03 },
+    { id:'combo',   p:0.02 },   // ジャックポット×2（合体枠が増えるぶん微減）
+    { id:'assault',  p:0.02 },  // 強襲（合体）
+    { id:'goldrule', p:0.02 },  // 黄金律（合体）
   ],
   5: [
-    { id:'attack',  p:0.05 },
-    { id:'steal',   p:0.05 },
-    { id:'shield',  p:0.05 },
-    { id:'jackpot', p:0.04 },
-    { id:'coin',    p:0.05 },
-    { id:'combo',   p:0.04 },
-    { id:'assault',  p:0.05 },  // 強襲（合体）：5個は最も出やすい
-    { id:'goldrule', p:0.05 },  // 黄金律（合体）：5個は最も出やすい
+    { id:'attack',  p:0.03 },
+    { id:'steal',   p:0.03 },
+    { id:'shield',  p:0.03 },
+    { id:'jackpot', p:0.02 },
+    { id:'coin',    p:0.03 },
+    { id:'combo',   p:0.02 },
+    { id:'assault',  p:0.03 },  // 強襲（合体）：5個は最も出やすい
+    { id:'goldrule', p:0.03 },  // 黄金律（合体）：5個は最も出やすい
   ],
 };
 const shuffleN = (a) => { const b=[...a]; for(let i=b.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
