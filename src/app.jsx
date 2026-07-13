@@ -519,8 +519,8 @@ function Toast({ msg }) {
    ============================================================ */
 // 初期ダイス列は initialDice(n)（マスターデータ側で定義）に統一。旧 INITIAL_DICE は廃止。
 
-function Die({ face, phase, anim='toss', lit=false }) {
-  const cls = "die " + (anim==='toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' combo-lit' : '');
+function Die({ face, phase, anim='toss', lit=false, litClass='combo-lit' }) {
+  const cls = "die " + (anim==='toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' '+litClass : '');
   return (
     <div className={cls}>
       <Img src={IMG+'dice/Dice_Normal.png'} className="die-body"
@@ -544,7 +544,7 @@ const DIE3D_YAW = 32;   // 全ダイス共通・固定のヨー整列角（index
 const SLOT_FOR_ID = { coin:'front', attack:'top', steal:'right', shield:'left', jackpot:'bottom' };
 const norm360 = a => ((a % 360) + 360) % 360;
 
-function Die3D({ face, rollKey, index=0, lit=false }) {
+function Die3D({ face, rollKey, index=0, lit=false, litClass='combo-lit' }) {
   const cubeRef = useRef(null), launchRef = useRef(null);
   const rot = useRef(null);
   // idle は各ダイスで違う役を見せる：小判(front)/スティール(right)/シールド(left)。
@@ -577,7 +577,7 @@ function Die3D({ face, rollKey, index=0, lit=false }) {
     return () => clearTimeout(t);
   }, [rollKey]);
   return (
-    <div className={"d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' combo-lit' : '')}>
+    <div className={"d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' '+litClass : '')}>
       <div className="d3-launch" ref={launchRef}>
         <div className="d3-cam-tilt">
           <div className="d3-yaw" style={{ transform:`rotateY(${DIE3D_YAW}deg)` }}>
@@ -702,7 +702,10 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
   const [fx, setFx] = useState({ coin:false, jackpot:false, gain:0, key:0 });
   const [showDebug, setShowDebug] = useState(() => new URLSearchParams(window.location.search).has('debugopen'));
   const [noPodium, setNoPodium] = useState(false);   // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
-  const [comboFx, setComboFx] = useState(null);      // 合体役ハイライト：{ cc, indices:Set<number> }（resolveRollのcombo分岐で設定）
+  // 効果を発揮している出目のハイライト：{ cc, indices:Set<number>, kind:'combo'|'zorome'|'jpcombo'|'normal' }
+  // resolveRollの各分岐（combo/zorome/jpcombo/通常）で設定。kind==='combo'のみステージ全体オーラ（dice-stage.combo::after）も点灯し、
+  // kind==='normal'（通常役のコインハイライト）は控えめな静的グロー（.coin-lit）、それ以外は既存のパルスリング（.combo-lit）を使う。
+  const [comboFx, setComboFx] = useState(null);
   const [comboCutin, setComboCutin] = useState(null); // 合体役カットイン：'assault'|'goldrule'|null（表示中はonComboを呼ばずisRollingも解放しない）
   // auto は App 側で保持（ボーナス/アタック等で MainRoll がアンマウントされても状態を維持する）
 
@@ -832,7 +835,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
       //          そのタイミング以降はこのコンポーネント内でsetStateしない（onComboCutinDone側で担保）。
       //  - 黄金律：この画面に残るため、カットイン終了後に必ず解放する（comboFxも忘れずクリア）。
       const idx = new Set(); results.forEach((f,i) => { if (ev.roles.includes(f.id)) idx.add(i); });
-      setComboFx({ cc: ev.comboId==='assault' ? '#DC2626' : '#059669', indices: idx });
+      setComboFx({ cc: ev.comboId==='assault' ? '#DC2626' : '#059669', indices: idx, kind:'combo' });
       setMood('excited');
       setSpeech(ev.comboId === 'assault' ? '強襲！！' : '黄金律！！');
       SFX.zorume();
@@ -842,6 +845,9 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
     if (ev.kind === 'zorome') {
       const faceId = ev.faceId;
       const k = ev.count[faceId];   // 成立面数（MVP=ダイス数）
+      // 成立面（=効果を発揮している出目）を役色でハイライト。既存のZorumeOverlay等の演出と並行して点灯。
+      const idx = new Set(); results.forEach((f,i) => { if (f.id === faceId) idx.add(i); });
+      setComboFx({ cc: FACE_COLOR[faceId], indices: idx, kind:'zorome' });
       setMood('zorume');
       setSpeech(FACE_LABEL[faceId] + 'ぞろ目！');
       SFX.zorume();
@@ -852,6 +858,9 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
     const gain = calculateCoins(results, game.stage);
     if (ev.kind === 'jpcombo') {
       const bonus = gain + 3000;
+      // ジャックポット×2：jackpot面のみを役色でハイライト
+      const idx = new Set(); results.forEach((f,i) => { if (f.id === 'jackpot') idx.add(i); });
+      setComboFx({ cc: FACE_COLOR.jackpot, indices: idx, kind:'jpcombo' });
       fireFx({ jackpot:true }); SFX.jackpot();
       setMood('excited'); setSpeech('ジャックポット×2！');
       addCoins(bonus); setLastGain(bonus); setGainKey(k=>k+1);
@@ -862,6 +871,11 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
     } else {
       const coinCount = results.filter(r=>r.id==='coin').length;
       const shieldCount = results.filter(r=>r.id==='shield').length;
+      // 通常役：コイン面（calculateCoinsが500×枚数を加算している面）のみを控えめにハイライト。コイン0枚なら点灯しない。
+      if (coinCount > 0) {
+        const idx = new Set(); results.forEach((f,i) => { if (f.id === 'coin') idx.add(i); });
+        setComboFx({ cc: '#FFE14D', indices: idx, kind:'normal' });  // FACE_COLOR.coin(#D97706)は背景と同化するため明るい金に
+      }
       addCoins(gain); setLastGain(gain); setGainKey(k=>k+1);
       coinGateRef.current = false;   // 通常役：コイン噴き上げは次ロールをブロックしない（見た目だけ並行再生）
       if (gain>0) { setCoinSpray(k=>k+1); SFX.coin(); }   // 非ぞろ目は常に gain>0 → 毎回噴き上げ
@@ -993,11 +1007,11 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
 
       {/* dice area */}
       <div className="dice-area">
-        <div className={"dice-stage" + (comboFx ? ' combo' : '') + (noPodium ? ' no-podium' : '')} style={comboFx ? { '--cc': comboFx.cc } : undefined}>
+        <div className={"dice-stage" + (comboFx && comboFx.kind==='combo' ? ' combo' : '') + (noPodium ? ' no-podium' : '')} style={comboFx ? { '--cc': comboFx.cc } : undefined}>
           <div className={"dice-row" + (rollAnim==='3d' ? ' d3' : '') + (diceCount===4?' n4':diceCount===5?' n5':'')}>
             {rollAnim==='3d'
-              ? dice.map((f,i)=><Die3D key={i} face={f} rollKey={roll3dKey} index={i} lit={!!comboFx && comboFx.indices.has(i)} />)
-              : dice.map((f,i)=><Die key={i} face={f} phase={phases[i]} anim={rollAnim} lit={!!comboFx && comboFx.indices.has(i)} />)}
+              ? dice.map((f,i)=><Die3D key={i} face={f} rollKey={roll3dKey} index={i} lit={!!comboFx && comboFx.indices.has(i)} litClass={comboFx && comboFx.kind==='normal' ? 'coin-lit' : 'combo-lit'} />)
+              : dice.map((f,i)=><Die key={i} face={f} phase={phases[i]} anim={rollAnim} lit={!!comboFx && comboFx.indices.has(i)} litClass={comboFx && comboFx.kind==='normal' ? 'coin-lit' : 'combo-lit'} />)}
           </div>
         </div>
       </div>

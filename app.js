@@ -1343,9 +1343,10 @@ function Die({
   face,
   phase,
   anim = 'toss',
-  lit = false
+  lit = false,
+  litClass = 'combo-lit'
 }) {
-  const cls = "die " + (anim === 'toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' combo-lit' : '');
+  const cls = "die " + (anim === 'toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' ' + litClass : '');
   return /*#__PURE__*/React.createElement("div", {
     className: cls
   }, /*#__PURE__*/React.createElement(Img, {
@@ -1433,7 +1434,8 @@ function Die3D({
   face,
   rollKey,
   index = 0,
-  lit = false
+  lit = false,
+  litClass = 'combo-lit'
 }) {
   const cubeRef = useRef(null),
     launchRef = useRef(null);
@@ -1489,7 +1491,7 @@ function Die3D({
     return () => clearTimeout(t);
   }, [rollKey]);
   return /*#__PURE__*/React.createElement("div", {
-    className: "d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' combo-lit' : '')
+    className: "d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' ' + litClass : '')
   }, /*#__PURE__*/React.createElement("div", {
     className: "d3-launch",
     ref: launchRef
@@ -1735,7 +1737,10 @@ function MainRoll({
   });
   const [showDebug, setShowDebug] = useState(() => new URLSearchParams(window.location.search).has('debugopen'));
   const [noPodium, setNoPodium] = useState(false); // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
-  const [comboFx, setComboFx] = useState(null); // 合体役ハイライト：{ cc, indices:Set<number> }（resolveRollのcombo分岐で設定）
+  // 効果を発揮している出目のハイライト：{ cc, indices:Set<number>, kind:'combo'|'zorome'|'jpcombo'|'normal' }
+  // resolveRollの各分岐（combo/zorome/jpcombo/通常）で設定。kind==='combo'のみステージ全体オーラ（dice-stage.combo::after）も点灯し、
+  // kind==='normal'（通常役のコインハイライト）は控えめな静的グロー（.coin-lit）、それ以外は既存のパルスリング（.combo-lit）を使う。
+  const [comboFx, setComboFx] = useState(null);
   const [comboCutin, setComboCutin] = useState(null); // 合体役カットイン：'assault'|'goldrule'|null（表示中はonComboを呼ばずisRollingも解放しない）
   // auto は App 側で保持（ボーナス/アタック等で MainRoll がアンマウントされても状態を維持する）
 
@@ -1923,7 +1928,8 @@ function MainRoll({
       });
       setComboFx({
         cc: ev.comboId === 'assault' ? '#DC2626' : '#059669',
-        indices: idx
+        indices: idx,
+        kind: 'combo'
       });
       setMood('excited');
       setSpeech(ev.comboId === 'assault' ? '強襲！！' : '黄金律！！');
@@ -1934,6 +1940,16 @@ function MainRoll({
     if (ev.kind === 'zorome') {
       const faceId = ev.faceId;
       const k = ev.count[faceId]; // 成立面数（MVP=ダイス数）
+      // 成立面（=効果を発揮している出目）を役色でハイライト。既存のZorumeOverlay等の演出と並行して点灯。
+      const idx = new Set();
+      results.forEach((f, i) => {
+        if (f.id === faceId) idx.add(i);
+      });
+      setComboFx({
+        cc: FACE_COLOR[faceId],
+        indices: idx,
+        kind: 'zorome'
+      });
       setMood('zorume');
       setSpeech(FACE_LABEL[faceId] + 'ぞろ目！');
       SFX.zorume();
@@ -1950,6 +1966,16 @@ function MainRoll({
     const gain = calculateCoins(results, game.stage);
     if (ev.kind === 'jpcombo') {
       const bonus = gain + 3000;
+      // ジャックポット×2：jackpot面のみを役色でハイライト
+      const idx = new Set();
+      results.forEach((f, i) => {
+        if (f.id === 'jackpot') idx.add(i);
+      });
+      setComboFx({
+        cc: FACE_COLOR.jackpot,
+        indices: idx,
+        kind: 'jpcombo'
+      });
       fireFx({
         jackpot: true
       });
@@ -1966,6 +1992,18 @@ function MainRoll({
     } else {
       const coinCount = results.filter(r => r.id === 'coin').length;
       const shieldCount = results.filter(r => r.id === 'shield').length;
+      // 通常役：コイン面（calculateCoinsが500×枚数を加算している面）のみを控えめにハイライト。コイン0枚なら点灯しない。
+      if (coinCount > 0) {
+        const idx = new Set();
+        results.forEach((f, i) => {
+          if (f.id === 'coin') idx.add(i);
+        });
+        setComboFx({
+          cc: '#FFE14D',
+          indices: idx,
+          kind: 'normal'
+        }); // FACE_COLOR.coin(#D97706)は背景と同化するため明るい金に
+      }
       addCoins(gain);
       setLastGain(gain);
       setGainKey(k => k + 1);
@@ -2172,7 +2210,7 @@ function MainRoll({
   })), /*#__PURE__*/React.createElement("div", {
     className: "dice-area"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "dice-stage" + (comboFx ? ' combo' : '') + (noPodium ? ' no-podium' : ''),
+    className: "dice-stage" + (comboFx && comboFx.kind === 'combo' ? ' combo' : '') + (noPodium ? ' no-podium' : ''),
     style: comboFx ? {
       '--cc': comboFx.cc
     } : undefined
@@ -2183,13 +2221,15 @@ function MainRoll({
     face: f,
     rollKey: roll3dKey,
     index: i,
-    lit: !!comboFx && comboFx.indices.has(i)
+    lit: !!comboFx && comboFx.indices.has(i),
+    litClass: comboFx && comboFx.kind === 'normal' ? 'coin-lit' : 'combo-lit'
   })) : dice.map((f, i) => /*#__PURE__*/React.createElement(Die, {
     key: i,
     face: f,
     phase: phases[i],
     anim: rollAnim,
-    lit: !!comboFx && comboFx.indices.has(i)
+    lit: !!comboFx && comboFx.indices.has(i),
+    litClass: comboFx && comboFx.kind === 'normal' ? 'coin-lit' : 'combo-lit'
   }))))), /*#__PURE__*/React.createElement("button", {
     className: "bet-toggle",
     disabled: isRolling,
