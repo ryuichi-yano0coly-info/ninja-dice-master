@@ -243,9 +243,9 @@
       background: radial-gradient(closest-side, color-mix(in srgb, var(--cc, #F0C040) 40%, transparent), transparent 72%);
       animation: fadeIn .3s ease; pointer-events:none; }
     /* 通常役でコイン面が止まった時のハイライト：毎ロール発生するため、合体/ぞろ目より控えめ（パルスなし）。
-       背景（暖色/紺）と同化しないよう、白コア＋明るい金の二重グローで縁取る。 */
+       背景が暖色・金系のため、金/琥珀は同化する。白コア＋寒色シアンの二重グローで縁取る。 */
     .die.coin-lit, .d3-slot.coin-lit {
-      filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 9px var(--cc, #FFE14D)); }
+      filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 10px var(--cc, #5EE7FF)); }
     .die .die-body { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
     .die .die-face {
       position: absolute; width: 50%; height: 50%;
