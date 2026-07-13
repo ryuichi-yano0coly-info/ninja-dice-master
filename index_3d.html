@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Ninja Dice Master — 3Dロール実験</title>
+  <title>Ninja Dice Master — 桃鉄式 俯瞰ダイス 実験</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     :root{ --navy:#111827; --gold:#D4A017; --gold-l:#F0C040; --red:#DC2626; }
@@ -20,60 +20,85 @@
     .topnote .badge{ display:inline-block; margin-top:8px; font-size:11px; font-weight:800; color:#0b1020;
       background:linear-gradient(180deg,#F0C040,#D4A017); padding:3px 12px; border-radius:999px; }
 
-    /* ---- 3D scene ---- */
-    .stage{ flex:1; width:100%; display:flex; align-items:center; justify-content:center; gap:24px;
-      perspective:1100px; perspective-origin:50% 42%; padding:20px 0; min-height:360px; }
-    .die-slot{ display:flex; flex-direction:column; align-items:center; }
-    /* 上に跳ねる発射（回転とは別レイヤーで縦移動） */
+    /* ---- count selector (3/4/5個) ---- */
+    .count-toggle{ margin-top:8px; padding:6px 18px; border-radius:999px; border:2px solid var(--gold);
+      background:rgba(212,160,23,.14); color:var(--gold-l); font-weight:800; font-size:13px; cursor:pointer; }
+    .count-toggle:active{ transform:translateY(1px); }
+
+    /* ============================================================
+       俯瞰（桃鉄式）3Dダイス・ステージ
+       構図: カメラは斜め上から約58度見下ろす。ダイスは垂直軸まわりに
+       全個共通の32度回転（整列）で、天面（+Y）が最も大きく見え、
+       側面が2面だけ細く覗く。配置は千鳥（ジグザグ）で前後に互い違い。
+       ============================================================ */
+    .iso-stage{ flex:1; width:100%; display:flex; align-items:center; justify-content:center;
+      gap:8px; padding:10px 6px 26px; min-height:360px; }
+
+    /* 各ダイスは自分専用の perspective を持つ（本体 Die3D の .d3-slot と同じ考え方）。
+       zigzag-a/b で上下に互い違いオフセットして「斜めの千鳥配置」にする。 */
+    .die-slot{ position:relative; width:104px; height:190px; perspective:820px; perspective-origin:50% 28%;
+      display:flex; align-items:flex-end; justify-content:center; }
+    .die-slot.zigzag-a{ transform:translateY(30px); z-index:2; }
+    .die-slot.zigzag-b{ transform:translateY(-24px); z-index:1; }
+    /* 4/5個は横幅430pxに収まるようダイスサイズを縮小（本体の.dice-row.n4/n5と同じ考え方。
+       --sz/--half はcubeの一辺基準、この.die-slot上で上書きすればcube側は継承して自動で縮む） */
+    .iso-stage.n4{ gap:2px; }
+    .iso-stage.n4 .die-slot{ width:92px; height:168px; --sz:84px; --half:42px; }
+    .iso-stage.n5{ gap:0px; }
+    .iso-stage.n5 .die-slot{ width:74px; height:140px; --sz:68px; --half:34px; }
+
+    /* 上に跳ねる発射（回転／カメラ傾斜より外側＝画面座標のまっすぐな上下動） */
     .launch{ transform-style:preserve-3d; will-change:transform; }
     .launch.go{ animation:launch3d 2s linear both; }
-    /* 重力の放物線：上昇→頂点→落下（第1接地）→減衰バウンド2回。滞空させない。 */
     @keyframes launch3d{
-      0%  { transform:translateY(0);      animation-timing-function:cubic-bezier(.2,.55,.5,1); }   /* 打ち上げ（減速して頂点へ） */
-      33% { transform:translateY(-165px); animation-timing-function:cubic-bezier(.55,0,.85,.5); }   /* 頂点→加速して落下 */
-      62% { transform:translateY(0);      animation-timing-function:cubic-bezier(.3,.5,.5,1); }     /* 第1接地 */
-      75% { transform:translateY(-36px);  animation-timing-function:cubic-bezier(.55,0,.85,.5); }   /* バウンド1 */
+      0%  { transform:translateY(0);      animation-timing-function:cubic-bezier(.2,.55,.5,1); }
+      33% { transform:translateY(-150px); animation-timing-function:cubic-bezier(.55,0,.85,.5); }
+      62% { transform:translateY(0);      animation-timing-function:cubic-bezier(.3,.5,.5,1); }
+      75% { transform:translateY(-32px);  animation-timing-function:cubic-bezier(.55,0,.85,.5); }
       86% { transform:translateY(0);      animation-timing-function:cubic-bezier(.3,.5,.5,1); }
-      93% { transform:translateY(-11px); }                                                          /* バウンド2 */
+      93% { transform:translateY(-9px); }
       100%{ transform:translateY(0); }
     }
-    /* 3D回転：空中は等速でぐるぐる → 着地の瞬間に一気に減速して止まる */
+
+    /* カメラ傾斜（全ダイス共通・固定）：見下ろし角。物体側を rotateX(-58deg) で「手前に傾ける」＝
+       カメラが上方55〜60度から見下ろしているのと同じ見え方になる（実測で符号・角度を確定。DEBUGコメント参照）。
+       --tilt はデバッグ用にJSからURLパラメータ(?tilt=)で上書き可能。 */
+    :root{ --tilt:-58deg; }
+    .cam-tilt{ transform-style:preserve-3d; transform:rotateX(var(--tilt)); }
+    /* ヨー（垂直軸まわり。天面は変わらず、覗く側面2枚だけが変わる）：全ダイス共通の固定値をJSで設定 */
+    .yaw{ transform-style:preserve-3d; }
+
+    /* 3D回転：空中は等速でぐるぐる → 着地の瞬間に一気に減速して止まる（従来と同じ） */
     .cube.spin3d{ animation:tumble3d 2s both; }
     @keyframes tumble3d{
-      0%  { transform:rotateX(var(--rx0)) rotateY(var(--ry0)); animation-timing-function:linear; }        /* 空中：等速 */
-      60% { transform:rotateX(var(--rxA)) rotateY(var(--ryA)); animation-timing-function:cubic-bezier(.15,.85,.3,1); } /* 着地直前まで等速 */
-      100%{ transform:rotateX(var(--rxE)) rotateY(var(--ryE)); }                                          /* 着地衝撃で停止 */
+      0%  { transform:rotateX(var(--rx0)) rotateY(var(--ry0)); animation-timing-function:linear; }
+      60% { transform:rotateX(var(--rxA)) rotateY(var(--ryA)); animation-timing-function:cubic-bezier(.15,.85,.3,1); }
+      100%{ transform:rotateX(var(--rxE)) rotateY(var(--ryE)); }
     }
-    .tilt{ transform-style:preserve-3d; transform:rotateX(-16deg) rotateY(-12deg); }
 
-    :root{ --sz:104px; --half:52px; }
+    :root{ --sz:100px; --half:50px; }
     .cube{ position:relative; width:var(--sz); height:var(--sz); transform-style:preserve-3d;
-      transform:rotateX(-20deg) rotateY(24deg); will-change:transform; }
-    .cube.rolling{ }
+      transform:rotateX(0deg) rotateY(0deg); will-change:transform; }
     .face{ position:absolute; inset:0; display:grid; place-items:center;
       background:linear-gradient(155deg,#fbf7ea,#efe6cf 62%,#e2d4b0);
-      border:3px solid var(--gold); border-radius:16px;
+      border:3px solid var(--gold); border-radius:14px;
       box-shadow:inset 0 0 0 2px rgba(255,255,255,.55), inset 0 -8px 14px rgba(150,120,40,.25);
       backface-visibility:hidden; }
-    .face img{ width:64%; height:64%; object-fit:contain; filter:drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
-    .face .emo{ font-size:46px; }
-    /* face placement */
+    .face img{ width:62%; height:62%; object-fit:contain; filter:drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+    .face .emo{ font-size:44px; }
+    /* face placement（従来と不変：立方体ローカル座標での6面配置） */
     .f-front { transform:translateZ(var(--half)); }
     .f-back  { transform:rotateY(180deg) translateZ(var(--half)); }
     .f-right { transform:rotateY(90deg)  translateZ(var(--half)); }
     .f-left  { transform:rotateY(-90deg) translateZ(var(--half)); }
     .f-top   { transform:rotateX(90deg)  translateZ(var(--half)); }
     .f-bottom{ transform:rotateX(-90deg) translateZ(var(--half)); }
-    /* subtle face-to-face shading for solidity */
-    .f-right, .f-left { filter:brightness(.9); }
+    .f-right, .f-left { filter:brightness(.92); }
     .f-bottom { filter:brightness(.8); }
-    .f-top { filter:brightness(1.06); }
+    .f-top { filter:brightness(1.08); }
 
-    .shadow{ width:88px; height:20px; margin-top:16px; border-radius:50%;
-      background:radial-gradient(ellipse at center, rgba(0,0,0,.55), rgba(0,0,0,0) 70%);
-      transition:transform .3s ease, opacity .3s ease; }
-
-    .result{ min-height:26px; margin:2px 0 4px; font-size:15px; font-weight:800; color:#fde68a; text-align:center; }
+    .result{ min-height:40px; margin:2px 0 4px; font-size:14px; font-weight:800; color:#fde68a; text-align:center;
+      line-height:1.6; padding:0 16px; }
     .result .r-hint{ color:#9ca3af; font-weight:700; font-size:12px; }
 
     /* ---- roll button (game style) ---- */
@@ -95,19 +120,20 @@
 <body>
   <div id="root"><div class="app">
     <div class="topnote">
-      <div class="title">🎲 3Dロール 実験</div>
-      <div class="sub">本物の立方体（CSS 3D）が転がって減速。<br>終盤にどの面が上になるか<b style="color:#fde68a">予想できる</b>のが狙いです。</div>
-      <div class="badge">PROTOTYPE — ロールのみ3D化</div>
+      <div class="title">🎲 俯瞰3Dロール 実験</div>
+      <div class="sub">桃鉄（桃太郎電鉄）のダイスのように、斜め上から見下ろして<b style="color:#fde68a">天面の出目</b>を読む構図です。</div>
+      <div class="badge">PROTOTYPE — 俯瞰カメラ＋千鳥配置</div>
+      <button class="count-toggle" id="countBtn">🎲 3個（タップで切替）</button>
     </div>
 
-    <div class="stage" id="stage"></div>
+    <div class="iso-stage" id="stage"></div>
 
     <div class="result" id="result"><span class="r-hint">「振る！」でロール開始</span></div>
 
     <div class="roll-zone">
       <div class="roll-wrap">
         <button class="roll-btn" id="rollBtn" title="振る">
-          <img src="assets/images/Btn_Roll.png" alt="roll"
+          <img src="assets/images/ui/Btn_Roll.png" alt="roll"
                onerror="this.style.display='none'" />
         </button>
         <div class="roll-cap">振る！</div>
@@ -115,12 +141,12 @@
       <div class="roll-sub">タップでロール</div>
     </div>
 
-    <div class="foot">通常版（フラット2Dロール）は <a href="index.html">index.html</a>。これは 3D 版の試作です。</div>
+    <div class="foot">通常版（フラット2Dロール）は <a href="index.html">index.html</a>。これは俯瞰3D構図の試作です。</div>
   </div></div>
 
   <script>
-    const IMG = 'assets/images/';
-    // 6面: スロット名 → 記号。コインはweight2相当で2面。
+    const IMG = 'assets/images/dice/';
+    // 6面: スロット名 → 記号。コインはweight2相当で2面。本体(src/app.jsx)のCUBE_LAYOUTと同一の対応。
     const FACES = [
       { slot:'front',  name:'コイン',       emo:'🪙', img:'DiceFace_Coin.png'   },
       { slot:'top',    name:'アタック',     emo:'⚔️', img:'DiceFace_Attack.png' },
@@ -129,51 +155,98 @@
       { slot:'bottom', name:'ジャックポット', emo:'⭐', img:'DiceFace_Jackpot.png'},
       { slot:'back',   name:'コイン',       emo:'🪙', img:'DiceFace_Coin.png'   },
     ];
-    // その面を「正面」に持ってくる立方体の回転（度）
+    // 俯瞰カメラ版のREST：各面を「天面スロット(.f-top)の位置」へ持ってくる立方体の回転（度）。
+    // 天面スロット自体は cube_rotation=identityで既に天面にあるので{x:0,y:0}。他の面は
+    // 天面の固定ジオメトリ(rotateX(90))と各面の固定ジオメトリの差分から算出し、
+    // ヘッドレスChromeでのスクリーンショット実測（?face=xxx&yaw=0）で1面ずつ検証済み。
+    // ※本体(src/app.jsx)のDie3Dは「正面(+Z)」基準のRESTを使っている＝カメラが違うので値は流用不可、
+    //   移植時はこの「天面基準」のRESTに差し替える必要がある（詳細は報告参照）。
     const REST = {
-      front:  { x:0,   y:0   },
-      back:   { x:0,   y:180 },
-      right:  { x:0,   y:-90 },
-      left:   { x:0,   y:90  },
-      top:    { x:-90, y:0   },
-      bottom: { x:90,  y:0   },
+      top:    { x:0,   y:0   },
+      front:  { x:90,  y:0   },
+      back:   { x:90,  y:180 },
+      right:  { x:90,  y:-90 },
+      left:   { x:90,  y:90  },
+      bottom: { x:180, y:0   },
     };
     const CLASS = { front:'f-front', back:'f-back', right:'f-right', left:'f-left', top:'f-top', bottom:'f-bottom' };
 
-    const stage = document.getElementById('stage');
-    const dice = [];
+    // ---- DEBUG overrides via URL（?tilt=-58&yaw=0&face=top）：本番では未指定でデフォルト値を使う ----
+    const DQP = new URLSearchParams(location.search);
+    if (DQP.has('tilt'))  document.documentElement.style.setProperty('--tilt', DQP.get('tilt')+'deg');
+    const FORCE_YAW = DQP.has('yaw') ? Number(DQP.get('yaw')) : null;   // 全ダイスのヨーを固定値にして切り分け
+    const FORCE_FACE = DQP.get('face') || null;                        // 全ダイスを静止状態でこの面にする（アニメ無し）
 
-    function buildDie(){
-      const slotEl = document.createElement('div'); slotEl.className='die-slot';
-      const tilt = document.createElement('div'); tilt.className='tilt';
-      const cube = document.createElement('div'); cube.className='cube';
+    const stage = document.getElementById('stage');
+    const countBtn = document.getElementById('countBtn');
+    const resultEl = document.getElementById('result');
+    const btn = document.getElementById('rollBtn');
+    let dice = [];
+    let diceCount = 3;
+    let rolling = false;
+
+    function buildDie(zigzagClass, yawDeg){
+      const slotEl = document.createElement('div'); slotEl.className = 'die-slot ' + zigzagClass;
+      const launch = document.createElement('div'); launch.className = 'launch';
+      const camTilt = document.createElement('div'); camTilt.className = 'cam-tilt';
+      const yaw = document.createElement('div'); yaw.className = 'yaw';
+      yaw.style.transform = 'rotateY(' + yawDeg + 'deg)';
+      const cube = document.createElement('div'); cube.className = 'cube';
       FACES.forEach(f => {
-        const face = document.createElement('div'); face.className = 'face '+CLASS[f.slot];
-        const img = document.createElement('img'); img.src = IMG+f.img; img.alt=f.name;
-        img.onerror = () => { face.innerHTML = '<span class="emo">'+f.emo+'</span>'; };
+        const face = document.createElement('div'); face.className = 'face ' + CLASS[f.slot];
+        const img = document.createElement('img'); img.src = IMG + f.img; img.alt = f.name;
+        img.onerror = () => { face.innerHTML = '<span class="emo">' + f.emo + '</span>'; };
         face.appendChild(img);
         cube.appendChild(face);
       });
-      tilt.appendChild(cube);
-      const launch = document.createElement('div'); launch.className='launch';
-      launch.appendChild(tilt);
-      const shadow = document.createElement('div'); shadow.className='shadow';
-      slotEl.appendChild(launch); slotEl.appendChild(shadow);
+      yaw.appendChild(cube);
+      camTilt.appendChild(yaw);
+      launch.appendChild(camTilt);
+      slotEl.appendChild(launch);
       stage.appendChild(slotEl);
-      return { cube, launch, shadow, rx:-20, ry:24 };  // 現在の累積回転を保持
+      return { cube, launch, rx:0, ry:0 };  // 現在の累積回転を保持（cubeのみ。yaw/camTiltは固定）
     }
-    for (let i=0;i<3;i++) dice.push(buildDie());
+
+    // 千鳥（ジグザグ）：偶数番目を手前(下)、奇数番目を奥(上)にずらす。ヨー角は全ダイス共通（整列）。
+    const YAW_DEG = 32;
+    function rebuildDice(n){
+      stage.innerHTML = '';
+      stage.className = 'iso-stage' + (n===4?' n4':n===5?' n5':'');
+      dice = [];
+      for (let i=0;i<n;i++){
+        const zz = (i % 2 === 0) ? 'zigzag-a' : 'zigzag-b';
+        const yawDeg = FORCE_YAW !== null ? FORCE_YAW : YAW_DEG;
+        dice.push(buildDie(zz, yawDeg));
+      }
+      resultEl.innerHTML = '<span class="r-hint">「振る！」でロール開始</span>';
+      if (FORCE_FACE) {
+        // デバッグ：アニメ無しで即座に指定面を天面REST角へ静止させる（傾斜/ヨーの見え方検証用）
+        dice.forEach(die => {
+          const rest = REST[FORCE_FACE] || REST.top;
+          die.cube.style.transition = 'none';
+          die.cube.style.transform = 'rotateX(' + rest.x + 'deg) rotateY(' + rest.y + 'deg)';
+          die.rx = rest.x; die.ry = rest.y;
+        });
+      }
+    }
+    rebuildDice(diceCount);
+
+    countBtn.addEventListener('click', () => {
+      if (rolling) return;
+      diceCount = diceCount >= 5 ? 3 : diceCount + 1;
+      countBtn.textContent = '🎲 ' + diceCount + '個（タップで切替）';
+      rebuildDice(diceCount);
+    });
 
     const norm = a => ((a % 360) + 360) % 360;
 
-    // die を指定スロットへ、前進方向に spins 回転させて着地
+    // die を指定スロットへ、前進方向に spins 回転させて着地（従来と同じ数式。camera-tilt/yawは不変な固定層なので触らない）
     function rollDie(die, slot, spinsX, spinsY, dur){
       const rest = REST[slot];
       const addX = norm(rest.x - die.rx) + spinsX*360;
       const addY = norm(rest.y - die.ry) + spinsY*360;
       const rx0 = die.rx, ry0 = die.ry;
       const rxE = rx0 + addX, ryE = ry0 + addY;
-      // 60%(=着地直前)までにほぼ回し切る → 残りは着地衝撃で一気に停止（空中では減速しない）
       const rxA = rx0 + 0.84*addX, ryA = ry0 + 0.84*addY;
       die.rx = rxE; die.ry = ryE;
       const c = die.cube;
@@ -182,40 +255,32 @@
       c.style.setProperty('--rxE', rxE+'deg'); c.style.setProperty('--ryE', ryE+'deg');
       c.style.animationDuration = dur+'s';
       c.classList.remove('spin3d'); void c.offsetWidth; c.classList.add('spin3d');
-      // 上へ跳ねる発射アニメ（回転と同じ長さ）
       die.launch.style.animationDuration = dur+'s';
       die.launch.classList.remove('go'); void die.launch.offsetWidth; die.launch.classList.add('go');
-      // 影：空中は小さく薄く → 着地で戻す
-      die.shadow.style.transform='scale(.62)'; die.shadow.style.opacity='.35';
-      setTimeout(()=>{ die.shadow.style.transform='scale(1)'; die.shadow.style.opacity='1'; }, dur*0.6*1000);
     }
-
-    const btn = document.getElementById('rollBtn');
-    const resultEl = document.getElementById('result');
-    let rolling = false;
 
     function roll(){
       if (rolling) return; rolling = true;
-      btn.disabled = true;
-      resultEl.innerHTML = '<span class="r-hint">…減速中、どの面が上に？</span>';
+      btn.disabled = true; countBtn.disabled = true;
+      resultEl.innerHTML = '<span class="r-hint">…減速中、どの面が天面に？</span>';
       const picks = [];
-      const durs = [2.0, 2.2, 2.4];          // ダイスごとに着地タイミングをずらす
-      const STAGGER = 220;                    // 左から順番に連続で発射する間隔
+      // トータル約1秒: 各ダイス0.9秒回転 + 50ms間隔（3個=約1.0秒、5個=約1.1秒）
+      const durs = dice.map(() => 0.9);
+      const STAGGER = 50;
       dice.forEach((die,i) => {
         const f = FACES[Math.floor(Math.random()*FACES.length)];
         picks.push(f);
-        const spinsX = 2 + Math.floor(Math.random()*3);   // 2〜4回転
-        const spinsY = 3 + Math.floor(Math.random()*3);   // 3〜5回転
-        setTimeout(() => rollDie(die, f.slot, spinsX, spinsY, durs[i]), i*STAGGER); // 左→右に発射
+        const spinsX = 1 + Math.floor(Math.random()*2);
+        const spinsY = 2 + Math.floor(Math.random()*2);
+        setTimeout(() => rollDie(die, f.slot, spinsX, spinsY, durs[i]), i*STAGGER);
       });
       const maxEnd = (dice.length-1)*STAGGER + Math.max(...durs)*1000;
       setTimeout(()=>{
         resultEl.innerHTML = '結果：' + picks.map(p=>p.name).join(' / ');
-        btn.disabled = false; rolling = false;
+        btn.disabled = false; countBtn.disabled = false; rolling = false;
       }, maxEnd + 150);
     }
     btn.addEventListener('click', roll);
-    // クリック領域を広げる（キャップ文字の上からも押せるように）
     document.querySelector('.roll-cap').addEventListener('click', roll);
   </script>
 </body>

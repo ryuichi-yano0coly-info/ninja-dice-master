@@ -11,11 +11,14 @@ const IMG = "assets/images/";
 const SFX = (() => {
   let ctx = null, master = null, enabled = true;
   try { enabled = (localStorage.getItem('ndm_sound') ?? '1') === '1'; } catch (e) {}
+  let volume = 100;
+  try { volume = parseInt(localStorage.getItem('ndm_se_vol') ?? '100', 10); if (isNaN(volume)) volume = 100; } catch(e){}
+  const BASE_GAIN = 0.32;
   const ensure = () => {
     if (!ctx) {
       try {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
-        master = ctx.createGain(); master.gain.value = 0.32; master.connect(ctx.destination);
+        master = ctx.createGain(); master.gain.value = BASE_GAIN * (volume/100); master.connect(ctx.destination);
       } catch (e) { return null; }
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -48,6 +51,11 @@ const SFX = (() => {
   return {
     setEnabled(v){ enabled = !!v; try { localStorage.setItem('ndm_sound', v ? '1':'0'); } catch(e){} if (v) ensure(); },
     isEnabled(){ return enabled; },
+    setVolume(v){ volume = Math.max(0, Math.min(100, v|0));
+      try { localStorage.setItem('ndm_se_vol', String(volume)); } catch(e){}
+      if (master) master.gain.value = BASE_GAIN * (volume/100); },
+    getVolume(){ return volume; },
+    setBgmVolume(f){ /* 将来: bgmGain.gain.value = f; 現状は安全に無処理（BGM未実装） */ },
     tap(){ play(t => tone(t, 520, 0.07, { type:'square', gain:0.10 })); },
     roll(){ play(t => { for (let i=0;i<8;i++) noise(t + i*0.055, 0.05, { gain:0.09, type:'bandpass', freq:2200 + Math.random()*1800, q:2 }); }); },
     land(){ play(t => { tone(t, 190, 0.13, { type:'triangle', gain:0.32, glideTo:85 }); noise(t, 0.06, { gain:0.14, type:'lowpass', freq:420 }); }); },
@@ -74,41 +82,97 @@ const FACE_LIST = Object.values(DICE_FACES);
 const WEIGHTED  = FACE_LIST.flatMap(f => Array(f.weight).fill(f));
 const rollFace  = () => WEIGHTED[Math.floor(Math.random()*WEIGHTED.length)];
 
+/* ---- 積むダイス数（3/4/5）。消費ロールは振ったダイスの数と同じ（3個=3, 4個=4, 5個=5） ---- */
+const DICE_MIN = 3, DICE_MAX = 5;
+const DICE_COST = { 3:3, 4:4, 5:5 };
+// メイン画面の初期表示（アイドル）ダイス列。先頭n個を使う。
+const INITIAL_DICE_SEQ = [DICE_FACES.COIN, DICE_FACES.ATTACK, DICE_FACES.SHIELD, DICE_FACES.COIN, DICE_FACES.STEAL];
+const initialDice = (n) => INITIAL_DICE_SEQ.slice(0, n);
+const idlePhases  = (n) => Array(n).fill('idle');
+
+/* ---- 合体役（4個以上でのみ抽選対象）：両方の役が同時に条件を満たすと成立し、両方の効果＋一律ボーナスが乗る ---- */
+const COMBO_DEFS = [
+  { id:'assault',  roles:['attack','steal'],   route:'assault'  },  // 強襲＝アタック＋スティール
+  { id:'goldrule', roles:['coin','jackpot'],    route:'goldrule' },  // 黄金律＝コイン＋ジャックポット
+];
+const COMBO_K = 1.15;                    // 合体成立時の一律ボーナス倍率
+const GOLDRULE_COIN_ADD = 1;             // 黄金律：coinBaseForStage(stage)×この係数を小判上乗せ
+const ASSAULT_SHIELD_STEAL_DECAY = 0.6;  // 強襲：シールドで防がれた時も盗みは×0.6で成立
+const ASSAULT_SUMMARY_HOLD = 2200;       // 強襲：サマリー表示から自動で受け取るまでの時間(ms)（タップでスキップ可）
+
 /* ---- 役ベースの抽選 ----
    各ダイスを独立に振るのではなく、まず「役」を出現確率で決め、
-   その役に合う3つの出目を作ってからダイスを回す。
-   確率（100ロールあたりの期待回数）: */
-const HAND_ODDS = [
-  { id:'attack',  p:0.05 },   // アタックぞろ目  ≈5回
-  { id:'steal',   p:0.05 },   // スティールぞろ目 ≈5回
-  { id:'shield',  p:0.05 },   // シールドぞろ目  ≈5回
-  { id:'jackpot', p:0.04 },   // ジャックポットぞろ目 ≈4回
-  { id:'coin',    p:0.05 },   // コインぞろ目    ≈5回
-  { id:'combo',   p:0.05 },   // ジャックポット×2 ≈5回
-]; // 残り ≈71% は通常役
-const shuffle3 = (a) => { const b=[...a]; for(let i=2;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
+   その役に合うn個の出目を作ってからダイスを回す。
+   確率（100ロールあたりの期待回数）。ダイス数（3/4/5）でテーブルが変わる：
+   4個以上でのみ「強襲(assault)」「黄金律(goldrule)」の合体役が抽選対象に入る。 */
+const HAND_ODDS = {
+  3: [
+    { id:'attack',  p:0.05 },   // アタックぞろ目  ≈5回
+    { id:'steal',   p:0.05 },   // スティールぞろ目 ≈5回
+    { id:'shield',  p:0.05 },   // シールドぞろ目  ≈5回
+    { id:'jackpot', p:0.04 },   // ジャックポットぞろ目 ≈4回
+    { id:'coin',    p:0.05 },   // コインぞろ目    ≈5回
+    { id:'combo',   p:0.05 },   // ジャックポット×2 ≈5回
+  ], // 残り ≈71% は通常役
+  4: [
+    { id:'attack',  p:0.05 },
+    { id:'steal',   p:0.05 },
+    { id:'shield',  p:0.05 },
+    { id:'jackpot', p:0.04 },
+    { id:'coin',    p:0.05 },
+    { id:'combo',   p:0.04 },   // ジャックポット×2 ≈4回（合体枠が増えるぶん微減）
+    { id:'assault',  p:0.03 },  // 強襲（合体）
+    { id:'goldrule', p:0.03 },  // 黄金律（合体）
+  ],
+  5: [
+    { id:'attack',  p:0.05 },
+    { id:'steal',   p:0.05 },
+    { id:'shield',  p:0.05 },
+    { id:'jackpot', p:0.04 },
+    { id:'coin',    p:0.05 },
+    { id:'combo',   p:0.04 },
+    { id:'assault',  p:0.05 },  // 強襲（合体）：5個は最も出やすい
+    { id:'goldrule', p:0.05 },  // 黄金律（合体）：5個は最も出やすい
+  ],
+};
+const shuffleN = (a) => { const b=[...a]; for(let i=b.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
 const NON_JACKPOT = FACE_LIST.filter(f => f.id !== 'jackpot');
-function normalRoll() { // 通常役：ぞろ目でもJP×2でもない3つ
-  let r;
-  do { r = [rollFace(), rollFace(), rollFace()]; }
-  while ((r[0].id===r[1].id && r[1].id===r[2].id) || r.filter(x=>x.id==='jackpot').length >= 2);
+// ジャックポット×2（レガシーのjpcombo役）＋残りn-2個の非ジャックポット面。
+// 残りは重複を持たせない（NON_JACKPOTは4種なのでn<=5なら常に足りる）ことで、
+// 残り面が3つ以上揃って意図せず「ぞろ目」やCOMBO_DEFSの合体条件に化けるのを防ぐ。
+function jpComboFaces(n) {
+  const restLen = Math.max(0, n - 2);
+  const rest = shuffleN(NON_JACKPOT).slice(0, restLen);
+  return shuffleN([DICE_FACES.JACKPOT, DICE_FACES.JACKPOT, ...rest]);
+}
+function normalRoll(n) { // 通常役：ぞろ目でもJP×2でも合体でもないn個
+  let r, count;
+  do {
+    r = Array.from({ length:n }, () => rollFace());
+    count = {};
+    r.forEach(f => { count[f.id] = (count[f.id]||0) + 1; });
+  } while (
+    Object.values(count).some(c => c >= 3) ||
+    (count.jackpot||0) >= 2 ||
+    COMBO_DEFS.some(c => (count[c.roles[0]]||0) >= 2 && (count[c.roles[1]]||0) >= 2)
+  );
   return r;
 }
-function decideHand() {
+function decideHand(n) {
+  const odds = HAND_ODDS[n] || HAND_ODDS[DICE_MIN];
   const roll = Math.random();
   let acc = 0;
-  for (const h of HAND_ODDS) {
+  for (const h of odds) {
     acc += h.p;
     if (roll < acc) {
-      if (h.id === 'combo') {
-        const other = NON_JACKPOT[Math.floor(Math.random()*NON_JACKPOT.length)];
-        return shuffle3([DICE_FACES.JACKPOT, DICE_FACES.JACKPOT, other]);
-      }
+      if (h.id === 'combo') return jpComboFaces(n);
+      if (h.id === 'assault')  return shuffleN([...Array(Math.ceil(n/2)).fill(DICE_FACES.ATTACK), ...Array(Math.floor(n/2)).fill(DICE_FACES.STEAL)]);
+      if (h.id === 'goldrule') return shuffleN([...Array(Math.ceil(n/2)).fill(DICE_FACES.COIN),   ...Array(Math.floor(n/2)).fill(DICE_FACES.JACKPOT)]);
       const f = DICE_FACES[h.id.toUpperCase()];
-      return [f, f, f];   // ぞろ目
+      return Array(n).fill(f);   // ぞろ目
     }
   }
-  return normalRoll();
+  return normalRoll(n);
 }
 
 // DEBUG — force any hand on the next roll (faces:null = random)
@@ -121,6 +185,10 @@ const DEBUG_HANDS = [
   { key:'jpz',     label:'⭐ ジャックポットぞろ目', faces:[D.JACKPOT,D.JACKPOT,D.JACKPOT] },
   { key:'jpcombo', label:'⭐⭐ ジャックポット×2', faces:[D.JACKPOT,D.JACKPOT,D.COIN] },
   { key:'coinwin', label:'🪙 コイン獲得（通常）', faces:[D.COIN,D.COIN,D.ATTACK] },
+  { key:'assault',   label:'⚔️🥷 強襲（合体・4個）',   faces:[D.ATTACK,D.ATTACK,D.STEAL,D.STEAL] },
+  { key:'goldrule',  label:'🪙⭐ 黄金律（合体・4個）',   faces:[D.COIN,D.COIN,D.JACKPOT,D.JACKPOT] },
+  { key:'assault5',  label:'⚔️🥷 強襲（合体・5個）',   faces:[D.ATTACK,D.ATTACK,D.ATTACK,D.STEAL,D.STEAL] },
+  { key:'goldrule5', label:'🪙⭐ 黄金律（合体・5個）',   faces:[D.COIN,D.COIN,D.COIN,D.JACKPOT,D.JACKPOT] },
   { key:'random',  label:'🎲 ランダム',          faces:null },
 ];
 
@@ -142,11 +210,21 @@ function calculateCoins(results, stage) {
   const coinCount = results.filter(r => r.id === 'coin').length;
   return baseCoins + addCoins * coinCount;
 }
-function checkZorume(results) {
-  const isZorume = results[0].id === results[1].id && results[1].id === results[2].id;
-  const jackpotCount = results.filter(r => r.id === 'jackpot').length;
-  const isJackpotCombo = jackpotCount >= 2 && !isZorume;
-  return { isZorume, isJackpotCombo, faceId: results[0].id };
+// 出目配列を評価して役を確定する（唯一の真実）。優先度: combo（強襲/黄金律） > ぞろ目 > JP×2 > 通常。
+// debug/demoはfacesを直接注入するだけで、この関数がそのまま正しい役を判定する。
+function evaluateHand(faces) {
+  const count = {};
+  faces.forEach(f => { count[f.id] = (count[f.id]||0) + 1; });
+  for (const c of COMBO_DEFS) {
+    const [a, b] = c.roles;
+    if ((count[a]||0) >= 2 && (count[b]||0) >= 2) {
+      return { kind:'combo', comboId:c.id, route:c.route, roles:c.roles, count };
+    }
+  }
+  const z = Object.keys(count).find(id => count[id] >= 3);
+  if (z) return { kind:'zorome', faceId:z, count };
+  if ((count.jackpot||0) >= 2) return { kind:'jpcombo', count };
+  return { kind:'normal', count };
 }
 
 // SCREEN 03 — bonus dice tables
@@ -209,17 +287,16 @@ const generateStealResults = (ids) => ids.map(id => {
 });
 // スティール：相手の村の建物ごとの奪取パラメータ（建物を直接タップして盗む）
 const STEAL_BUILDING = {
-  castle:     { coinRange:[40000,85000], boxChance:0.15 },
-  storehouse: { coinRange:[50000,90000], boxChance:0.38 },
-  statue:     { coinRange:[15000,35000], boxChance:0.50 },
-  garden:     { coinRange:[25000,55000], boxChance:0.22 },
+  castle:     { label:'天守閣', coinRange:[40000,85000], boxChance:0.15 },
+  storehouse: { label:'蔵',     coinRange:[50000,90000], boxChance:0.38 },
+  statue:     { label:'石像',   coinRange:[15000,35000], boxChance:0.50 },
+  garden:     { label:'庭園',   coinRange:[25000,55000], boxChance:0.22 },
 };
 const stealFromBuilding = (it) => {
   const p = STEAL_BUILDING[it.id] || { coinRange:[20000,50000], boxChance:0.2 };
   const coinGain = Math.floor(p.coinRange[0] + Math.random()*(p.coinRange[1]-p.coinRange[0]));
   return { id:it.id, label:it.label, coinGain, hasBox: Math.random() < p.boxChance };
 };
-
 // SCREEN 07 — own castle parts (build)
 const PART_COST = [100,300,700,1500,3000];
 const makeCastleParts = () => ([
@@ -243,6 +320,27 @@ const castleTypeForStage = (s) => STAGE_THEMES[Math.min(Math.max(1, s|0), MAX_ST
 // 小判（コイン/ジャックポット）で得られるベース金額。ステージ進捗に応じて超線形に増える。
 // 例: s1=500, s2=1500, s3=3000, s5=7500, s7=14000, s10=27500（旧: stage*500 = s10で5000）。
 const coinBaseForStage = (s) => { const n = Math.min(Math.max(1, s|0), MAX_STAGE); return 250 * n * (n + 1); };
+
+// ---- 役スケール（成立面数 k。k=3が現行基準。合体役=assault/goldruleには適用しない） ----
+const STEAL_TAPS_BY_K    = { 3:3, 4:4, 5:4 };   // タップ棟数（村は4棟が上限）
+const STEAL_K5_MULT      = 1.2;                 // k=5：総額の追加倍率
+const ATTACK_DESTROY_BY_K= { 3:1, 4:2, 5:3 };   // 破壊棟数 = k−2
+const ATTACK_COIN_KMULT  = { 3:1, 4:1.5, 5:2 }; // coin部分のkスケール
+const ATTACK_COIN_CAP_FRAC = 0.5;               // 1回で奪える相手コイン割合の上限（50%ハードキャップ）
+const JACKPOT_KMULT      = { 3:1, 4:2, 5:3 };   // 獲得×(k−2)
+const JACKPOT_CAP_MULT   = 200;                 // コインボーナス最大×200との階層逆転を解消し、JPを頂点に維持
+const jackpotCap = (stage) => coinBaseForStage(stage) * JACKPOT_CAP_MULT;
+const COIN_BONUS_MULTS_BY_K = {                 // コインボーナス6面（kでシフト）
+  3: [2, 5, 10, 20, 50, 100],
+  4: [5, 10, 20, 50, 100, 200],
+  5: [10, 20, 50, 100, 200, 200],
+};
+const coinBonusTableForK = (k) =>
+  (COIN_BONUS_MULTS_BY_K[k] || COIN_BONUS_MULTS_BY_K[3])
+    .map((m, i) => ({ face:i+1, label:'×'+m, sub:'', multiplier:m }));
+const SHIELD_EXCESS_COIN_MULT = 5;              // 超過1枚 = coinBase × これ
+const shieldExcessCoin = (stage, k) =>
+  coinBaseForStage(stage) * SHIELD_EXCESS_COIN_MULT * Math.max(0, k - 3);
 
 /* 対戦相手ロスター：大金持ち → 初心者 の順。アタック/スティールのたびに入れ替わる。
    coins=保有コイン（獲得額のベース）、shields=初期シールド枚数（金持ちほど堅い）。 */
@@ -415,10 +513,10 @@ function Toast({ msg }) {
 /* ============================================================
    SCREEN 01 — MAIN ROLL
    ============================================================ */
-const INITIAL_DICE = [DICE_FACES.COIN, DICE_FACES.ATTACK, DICE_FACES.SHIELD];
+// 初期ダイス列は initialDice(n)（マスターデータ側で定義）に統一。旧 INITIAL_DICE は廃止。
 
-function Die({ face, phase, anim='toss' }) {
-  const cls = "die " + (anim==='toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '');
+function Die({ face, phase, anim='toss', lit=false }) {
+  const cls = "die " + (anim==='toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' combo-lit' : '');
   return (
     <div className={cls}>
       <Img src={IMG+'dice/Dice_Normal.png'} className="die-body"
@@ -436,28 +534,33 @@ const CUBE_LAYOUT = [
   { slot:'bottom', id:'jackpot' },{ slot:'back',   id:'coin' },
 ];
 const REST3D = { front:{x:0,y:0}, back:{x:0,y:180}, right:{x:0,y:-90}, left:{x:0,y:90}, top:{x:-90,y:0}, bottom:{x:90,y:0} };
+// 俯瞰（桃鉄式）カメラ専用のRESTテーブル：出目を「天面」に向ける回転目標。
+// BonusDie3D は正面カメラ(.d3-tilt)のままのため、上の REST3D を使い続ける（このテーブルは Die3D 専用）。
+const REST3D_TOP = { top:{x:0,y:0}, front:{x:90,y:0}, back:{x:90,y:180}, right:{x:90,y:-90}, left:{x:90,y:90}, bottom:{x:180,y:0} };
+const DIE3D_YAW = 32;   // 全ダイス共通・固定のヨー整列角（index_3d.html の実測値と同一）
 const SLOT_FOR_ID = { coin:'front', attack:'top', steal:'right', shield:'left', jackpot:'bottom' };
 const norm360 = a => ((a % 360) + 360) % 360;
 
-function Die3D({ face, rollKey, index=0 }) {
+function Die3D({ face, rollKey, index=0, lit=false }) {
   const cubeRef = useRef(null), launchRef = useRef(null);
   const rot = useRef(null);
   // idle は各ダイスで違う役を見せる：小判(front)/スティール(right)/シールド(left)。
-  // 着地時と同じ「面を正面に向ける」向き＝読みやすい。top/bottom(rotateX±90)は真横に潰れるので使わない。
-  if (rot.current === null) { const s = REST3D[['front','right','left'][index % 3]]; rot.current = { rx:s.x, ry:s.y }; }
+  // 天面基準のRESTなので、この面が天面（カメラに最も大きく見える面）に来る。
+  // 4〜5個ダイスでも安全に3方向を巡回させるため、常に配列長(3)で割る（diceCountで割ると4番目以降が out-of-range になる）。
+  if (rot.current === null) { const s = REST3D_TOP[['front','right','left'][index % 3]]; rot.current = { rx:s.x, ry:s.y }; }
   // idle 向きを一度だけ適用（transformはJSXに置かず、Reactの再描画で消えないようにする）
   useEffect(() => { if (cubeRef.current) cubeRef.current.style.transform = `rotateX(${rot.current.rx}deg) rotateY(${rot.current.ry}deg)`; }, []);
   useEffect(() => {
     if (!rollKey) return;                     // 初期表示ではロールしない
-    const rest = REST3D[SLOT_FOR_ID[face.id] || 'front'];
-    const spinsX = 2 + Math.floor(Math.random()*3);   // 2〜4回転
-    const spinsY = 3 + Math.floor(Math.random()*3);   // 3〜5回転
+    const rest = REST3D_TOP[SLOT_FOR_ID[face.id] || 'front'];
+    const spinsX = 1 + Math.floor(Math.random()*2);   // 1〜2回転
+    const spinsY = 2 + Math.floor(Math.random()*2);   // 2〜3回転
     const rx0 = rot.current.rx, ry0 = rot.current.ry;
     const rxE = rx0 + norm360(rest.x - rx0) + spinsX*360;
     const ryE = ry0 + norm360(rest.y - ry0) + spinsY*360;
     const rxA = rx0 + 0.84*(rxE-rx0), ryA = ry0 + 0.84*(ryE-ry0);
     rot.current = { rx:rxE, ry:ryE };
-    const dur = 1.3;
+    const dur = 0.9;   // 俯瞰演出：1個あたり0.9秒
     const c = cubeRef.current, l = launchRef.current;
     if (!c || !l) return;
     const start = () => {
@@ -467,19 +570,21 @@ function Die3D({ face, rollKey, index=0 }) {
       c.style.animation = 'none'; void c.offsetWidth; c.style.animation = `d3tumble ${dur}s both`;
       l.style.animation = 'none'; void l.offsetWidth; l.style.animation = `d3launch ${dur}s linear both`;
     };
-    const t = setTimeout(start, index * 150);  // 左→右に順番に発射
+    const t = setTimeout(start, index * 50);  // 左→右に50ms間隔で発射
     return () => clearTimeout(t);
   }, [rollKey]);
   return (
-    <div className="d3-slot">
+    <div className={"d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' combo-lit' : '')}>
       <div className="d3-launch" ref={launchRef}>
-        <div className="d3-tilt">
-          <div className="d3-cube" ref={cubeRef}>
-            {CUBE_LAYOUT.map((f,i) => (
-              <div key={i} className={"d3-face f-"+f.slot}>
-                <Img src={FACE_IMG_BY_ID[f.id]} className="d3-sym" fallback={<span className="d3-emo">{FACE_EMOJI[f.id]}</span>} />
-              </div>
-            ))}
+        <div className="d3-cam-tilt">
+          <div className="d3-yaw" style={{ transform:`rotateY(${DIE3D_YAW}deg)` }}>
+            <div className="d3-cube" ref={cubeRef}>
+              {CUBE_LAYOUT.map((f,i) => (
+                <div key={i} className={"d3-face f-"+f.slot}>
+                  <Img src={FACE_IMG_BY_ID[f.id]} className="d3-sym" fallback={<span className="d3-emo">{FACE_EMOJI[f.id]}</span>} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -550,14 +655,15 @@ function CharMascot({ id, onClick }) {
 /* 画面左右のサイドレール（旧メニュー＋ボトムナビを左右に分散）。全遷移先へ1タップ。 */
 const SIDE_LEFT = [
   { screen:'castle',     img:'ui/Icon_Village.png', emoji:'🏯', label:'村建設' },
-  { screen:'characters', img:'char/Char_maneki_1.png', emoji:'🥷', label:'仲間' },
+  { screen:'characters', img:'ui/Icon_Companion.png',  emoji:'🐾', label:'仲間' },
   { screen:'collection', img:'ui/Icon_Card.png',    emoji:'📖', label:'カード' },
   { screen:'clan',       img:'ui/Icon_Clan.png',    emoji:'🗡️', label:'討伐', badge:'ticket' },
 ];
 const SIDE_RIGHT = [
-  { screen:'shop',   img:'ui/Icon_Shop.png',   emoji:'🛒', label:'商店' },
-  { screen:'season', img:'ui/Icon_Event.png',  emoji:'🎫', label:'催事' },
-  { screen:'invite', img:'ui/Icon_Invite.png', emoji:'👥', label:'招待' },
+  { screen:'shop',     img:'ui/Icon_Shop.png',     emoji:'🛒', label:'商店' },
+  { screen:'season',   img:'ui/Icon_Event.png',    emoji:'🎫', label:'催事' },
+  { screen:'invite',   img:'ui/Icon_Invite.png',   emoji:'👥', label:'招待' },
+  { screen:'settings', img:'ui/Icon_Settings.png', emoji:'⚙️', label:'設定' },
 ];
 function SideRail({ side, items, go, tickets=0, pulseKey=0 }) {
   return (
@@ -575,7 +681,7 @@ function SideRail({ side, items, go, tickets=0, pulseKey=0 }) {
   );
 }
 
-function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZorume, onCardDrop, dropCard, onMenu, onShop, tickets, bet=1, setBet, night, onToggleNight, auto, setAuto, rollAnim='toss', onToggleRollAnim, paused=false, equipped=null, freeRollChance=0, cardDropBonus=0, onResetShop, onRerollShop, onDebugTickets }) {
+function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZorume, onCombo, onCardDrop, dropCard, onMenu, onShop, tickets, diceCount=DICE_MIN, setDiceCount, night, onToggleNight, auto, setAuto, rollAnim='toss', onToggleRollAnim, paused=false, equipped=null, freeRollChance=0, cardDropBonus=0, onResetShop, onRerollShop, onDebugTickets }) {
   const freeRollRef = useRef(freeRollChance); freeRollRef.current = freeRollChance;   // 招き猫系：確率で無料ロール
   const cardBonusRef = useRef(cardDropBonus); cardBonusRef.current = cardDropBonus;   // だるま：カード排出率+
   const [coinSpray, setCoinSpray] = useState(0);     // コイン噴き上げ演出のキー（0=非表示）
@@ -583,8 +689,8 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
   const [railPulse, setRailPulse] = useState(0);     // カードUI（左レール）到着パルスのキー
   const cardFlyRef = useRef(null);                   // 飛翔カードのDOM参照（着地座標計算用）
   const flyTimers = useRef([]);
-  const [dice, setDice] = useState(INITIAL_DICE);
-  const [phases, setPhases] = useState(['idle','idle','idle']);
+  const [dice, setDice] = useState(() => initialDice(diceCount));
+  const [phases, setPhases] = useState(() => idlePhases(diceCount));
   const [isRolling, setIsRolling] = useState(false);
   const [lastGain, setLastGain] = useState(0);
   const [gainKey, setGainKey] = useState(0);
@@ -592,6 +698,9 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
   const [speech, setSpeech] = useState('');
   const [fx, setFx] = useState({ coin:false, jackpot:false, gain:0, key:0 });
   const [showDebug, setShowDebug] = useState(() => new URLSearchParams(window.location.search).has('debugopen'));
+  const [noPodium, setNoPodium] = useState(false);   // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
+  const [comboFx, setComboFx] = useState(null);      // 合体役ハイライト：{ cc, indices:Set<number> }（resolveRollのcombo分岐で設定）
+  const [comboCutin, setComboCutin] = useState(null); // 合体役カットイン：'assault'|'goldrule'|null（表示中はonComboを呼ばずisRollingも解放しない）
   // auto は App 側で保持（ボーナス/アタック等で MainRoll がアンマウントされても状態を維持する）
 
   // 常時ループの桜吹雪演出：マウント時に一度だけランダム生成（再レンダリングでリセットさせない）
@@ -612,24 +721,45 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
   const doRollRef = useRef(null);   // stable handle so the auto-loop effect doesn't churn with game identity
   const rollsRef = useRef(game.rolls);
   rollsRef.current = game.rolls;
-  const betRef = useRef(1); betRef.current = bet;   // ロールポイント倍率（報酬計算で参照）
+  const diceCountRef = useRef(diceCount); diceCountRef.current = diceCount;   // 消費算出用（auto-loopの残りロール判定でのみ参照）
   const rollAnimRef = useRef(rollAnim); rollAnimRef.current = rollAnim;
   const [roll3dKey, setRoll3dKey] = useState(0);    // 3D演出のロール再生トリガー
+  // ダイス数を昇格/降格させてから強制的に振りたい出目（デバッグ/デモ用）。setDiceCount後の再描画で
+  // diceCountが実際に目的値へ揃ったことをuseEffectの依存配列で確認してから消費する（setTimeout(0)の暗黙順序に依存しない）。
+  const pendingForcedRef = useRef(null);   // {faces, delay}
+  useEffect(() => {
+    const p = pendingForcedRef.current;
+    if (!p || p.faces.length !== diceCount) return;
+    pendingForcedRef.current = null;
+    const t = setTimeout(() => doRollRef.current && doRollRef.current(p.faces), p.delay || 0);
+    return () => clearTimeout(t);
+  }, [diceCount]);
 
   const clearSpins = () => { spinIntervals.current.forEach(clearInterval); spinIntervals.current = []; };
   useEffect(() => () => { clearSpins(); flyTimers.current.forEach(clearTimeout); }, []);
+
+  // ダイス数（3/4/5）切替時：ロール中でなければアイドル列を再構築（サイズ違いの配列を残さない）
+  useEffect(() => {
+    if (isRolling) return;
+    setDice(initialDice(diceCount));
+    setPhases(idlePhases(diceCount));
+  }, [diceCount]);   // eslint-disable-line
 
   const fireFx = useCallback((partial) => {
     fxKeyRef.current += 1;
     setFx({ coin:false, jackpot:false, gain:0, ...partial, key: fxKeyRef.current });
   }, []);
 
-  // ロール完了＝コイン噴き上げ演出の終了時に呼ぶ（オートロールはここで次へ進む）
+  // ロール解放（次ロールへ進める）処理。通常役は判定直後に自前のタイマーで早期に呼び、
+  // JP等の特殊役はコイン噴き上げ演出（CoinParticles）の終了 onDone から呼ぶ（coinGateRefで切替）。
   const finishRoll = useCallback(() => {
-    setPhases(['idle','idle','idle']);
+    setPhases(idlePhases(diceCount));
     rollingRef.current = false; setIsRolling(false);
     setTimeout(() => { setMood('idle'); setSpeech(''); }, 400);
-  }, []);
+  }, [diceCount]);
+  // true の間だけ CoinParticles の onDone(1350ms後) が finishRoll を呼ぶ（JP等の特殊役用ゲート）。
+  // 通常役では false のままにし、CoinParticles の演出は解放をブロックしない（見た目だけ流れ続ける）。
+  const coinGateRef = useRef(false);
 
   // 獲得カードを別位置に出し、少し見せてから左レールの「カード」ボタンへ飛ばす。着地でボタンをパルス。
   const flyKeyRef = useRef(0);
@@ -650,80 +780,121 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
 
   const doRoll = useCallback((forced) => {
     if (rollingRef.current) return;
-    if (game.rolls < game.bet) { showToast('ロールが足りません'); setAuto(false); return; }
+    const n = diceCount;
+    if (game.rolls < game.rollCost) { showToast('ロールが足りません'); setAuto(false); return; }
     rollingRef.current = true;
     setIsRolling(true);
+    setComboFx(null);   // 前回の合体ハイライトが残っていれば消す（goldrule閉じ直後の連打など）
+    setComboCutin(null);   // 前回のカットインが残っていれば消す
     if (Math.random() < freeRollRef.current) { showToast('🐾 無料ロール！'); }   // 招き猫系：消費なし
-    else game.useRolls(game.bet);   // ロールポイント倍率ぶん消費
+    else game.useRolls(game.rollCost);   // ダイス数ぶんのロールポイントを消費（3個=3/4個=4/5個=5）
     setMood('excited'); setSpeech(''); SFX.roll();
-    const results = Array.isArray(forced) && forced.length===3 ? forced : decideHand();
+    const results = Array.isArray(forced) && forced.length===n ? forced : decideHand(n);
 
     if (rollAnimRef.current === '3d') {
       // 3D：面の高速切替はせず、立方体が結果面へ転がって着地。着地に合わせて判定。
       clearSpins();
       setDice(results);
-      setPhases(['spinning','spinning','spinning']);
+      setPhases(Array(n).fill('spinning'));
       setRoll3dKey(k => k + 1);
-      setTimeout(() => resolveRoll(results), 1700);   // stagger + 転がり + 着地ぶん
+      // 俯瞰演出：50ms×(n-1)のstagger + 1個0.9秒 + 着地後の余裕150ms（トータル約1秒台）
+      setTimeout(() => resolveRoll(results), (n-1)*50 + 900 + 150);
       return;
     }
 
-    setPhases(['spinning','spinning','spinning']);
+    setPhases(Array(n).fill('spinning'));
     clearSpins();
-    for (let i=0;i<3;i++){
+    for (let i=0;i<n;i++){
       const id = setInterval(() => setDice(prev => { const nx=[...prev]; nx[i]=rollFace(); return nx; }), 80);
       spinIntervals.current.push(id);
     }
-    const stopTimes = [520,680,840];
+    const stopTimes = Array.from({ length:n }, (_,i) => 520 + i*160);
     results.forEach((res,i) => setTimeout(() => {
       clearInterval(spinIntervals.current[i]);
       setDice(prev => { const nx=[...prev]; nx[i]=res; return nx; });
       setPhases(prev => { const nx=[...prev]; nx[i]='landed'; return nx; });
     }, stopTimes[i]));
-    setTimeout(() => resolveRoll(results), 900);
-  }, [game, showToast]);
+    setTimeout(() => resolveRoll(results), stopTimes[n-1] + 60);
+  }, [game, showToast, diceCount]);
 
   const resolveRoll = useCallback((results) => {
-    const { isZorume, isJackpotCombo, faceId } = checkZorume(results);
-    const gain = calculateCoins(results, game.stage) * betRef.current;
+    const ev = evaluateHand(results);
     SFX.land();
 
-    if (isZorume) {
-      // hand off to the zorume overlay + flow router
+    if (ev.kind === 'combo') {
+      // 強襲／黄金律：両役の効果＋一律×1.15。参加ダイス（roles）を発光リング＋ステージオーラでハイライトしつつ、
+      // ぞろ目のZorumeOverlayと同格の「見得」（ComboCutin、約1.3秒）をはさんでからonComboを呼ぶ。
+      // カットイン表示中はisRollingを解放しない（＝二重ロール防止。オートループもisRolling/pausedで待機する）。
+      //  - 強襲：カットイン終了後にonCombo('assault')→画面遷移でMainRollがアンマウントされるため、
+      //          そのタイミング以降はこのコンポーネント内でsetStateしない（onComboCutinDone側で担保）。
+      //  - 黄金律：この画面に残るため、カットイン終了後に必ず解放する（comboFxも忘れずクリア）。
+      const idx = new Set(); results.forEach((f,i) => { if (ev.roles.includes(f.id)) idx.add(i); });
+      setComboFx({ cc: ev.comboId==='assault' ? '#DC2626' : '#059669', indices: idx });
+      setMood('excited');
+      setSpeech(ev.comboId === 'assault' ? '強襲！！' : '黄金律！！');
+      SFX.zorume();
+      setComboCutin(ev.comboId);
+      return;
+    }
+    if (ev.kind === 'zorome') {
+      const faceId = ev.faceId;
+      const k = ev.count[faceId];   // 成立面数（MVP=ダイス数）
       setMood('zorume');
       setSpeech(FACE_LABEL[faceId] + 'ぞろ目！');
       SFX.zorume();
-      setTimeout(() => { rollingRef.current = false; setIsRolling(false); setMood('idle'); setSpeech(''); setPhases(['idle','idle','idle']); }, 1300);
-      onZorume(faceId);
+      setTimeout(() => { rollingRef.current = false; setIsRolling(false); setMood('idle'); setSpeech(''); setPhases(idlePhases(diceCount)); }, 1300);
+      onZorume(faceId, k);
       return;
     }
-    if (isJackpotCombo) {
+    const gain = calculateCoins(results, game.stage);
+    if (ev.kind === 'jpcombo') {
       const bonus = gain + 3000;
       fireFx({ jackpot:true }); SFX.jackpot();
       setMood('excited'); setSpeech('ジャックポット×2！');
       addCoins(bonus); setLastGain(bonus); setGainKey(k=>k+1);
+      coinGateRef.current = true;   // JPは特殊役：従来どおりコイン噴き上げ終了(1350ms)までロールを解放しない
       setCoinSpray(k=>k+1);
       showToast('ジャックポットコンボ！ +' + fmt(bonus) + ' 🪙');
+      // ロール解放はコイン噴き上げの onDone (finishRoll) が行う（特殊役のゲートは維持）。
     } else {
       const coinCount = results.filter(r=>r.id==='coin').length;
       const shieldCount = results.filter(r=>r.id==='shield').length;
       addCoins(gain); setLastGain(gain); setGainKey(k=>k+1);
+      coinGateRef.current = false;   // 通常役：コイン噴き上げは次ロールをブロックしない（見た目だけ並行再生）
       if (gain>0) { setCoinSpray(k=>k+1); SFX.coin(); }   // 非ぞろ目は常に gain>0 → 毎回噴き上げ
       if (shieldCount>=2) { grantShields(1); showToast('シールド +1 🛡️'); }
       setMood(coinCount>=2 ? 'excited':'idle');
       setSpeech(coinCount>=2 ? 'コインざっくざく！' : '');
       // 通常ロールで一定確率にカードドロップ：中央でなくオフセンターに出して左レールへ飛ばす
       if (dropCard && Math.random() < (0.10 + cardBonusRef.current)) setTimeout(() => { const c = dropCard(); startCardFly(c); }, 500);   // カード排出率 35%→10%（だるま等の cardDropBonus は加算）
+      // 通常役はテンポ優先：判定から200ms後に早期解放し、次ロールを待たせない
+      // （コイン噴き上げ演出はCoinParticlesが並行して最後まで再生を続ける＝onDoneはここでは使わない）。
+      // 200ms＝ダイス数5・3D演出の最も遅いケースでも「ロール開始→次ロール可能」が約1.5秒以内に収まるよう実測調整。
+      setTimeout(() => finishRoll(), 200);
     }
-    // ロール解放はコイン噴き上げの onDone (finishRoll) が行う。ここでは解放しない（次ロールが演出を待つ）。
-  }, [game.stage, addCoins, grantShields, fireFx, showToast, onZorume, dropCard, startCardFly, finishRoll]);
+  }, [game.stage, addCoins, grantShields, fireFx, showToast, onZorume, dropCard, startCardFly, finishRoll, diceCount]);
+
+  // ComboCutin終了時に呼ばれる：ここで初めてonComboを叩き、画面遷移／JPオーバーレイに合流する。
+  // 強襲はこの呼び出し後にMainRollがアンマウントされるため、onCombo('assault')より後にsetStateしないこと。
+  const onComboCutinDone = useCallback(() => {
+    const comboId = comboCutin;
+    setComboCutin(null);
+    if (comboId === 'assault') {
+      onCombo('assault');   // 画面遷移でアンマウント。以降このコールバック内でsetStateしない。
+      return;
+    }
+    if (comboId === 'goldrule') {
+      rollingRef.current = false; setIsRolling(false); setMood('idle'); setSpeech(''); setPhases(idlePhases(diceCount)); setComboFx(null);
+      onCombo('goldrule');   // MultiplierOverlay（JP演出）へ合流
+    }
+  }, [comboCutin, onCombo, diceCount]);
 
   doRollRef.current = doRoll;
   // auto-roll loop — depends only on auto/isRolling (NOT on doRoll/game identity),
   // so the 350ms timer isn't reset by App re-renders (e.g. coin count-up animation).
   useEffect(() => {
     if (!auto || isRolling || paused) return;   // メニュー/ジャックポット等の演出中は一時停止（閉じたら再開）
-    if (rollsRef.current < betRef.current) { setAuto(false); return; }
+    if (rollsRef.current < DICE_COST[diceCountRef.current]) { setAuto(false); return; }
     const t = setTimeout(() => doRollRef.current && doRollRef.current(), 350);
     return () => clearTimeout(t);
   }, [auto, isRolling, paused]);
@@ -737,18 +908,29 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
     return () => clearInterval(id);
   }, [game.rolls, game.rollsMax]);
 
-  // demo hook (?demo=win|coin|zorume|jackpot|shield)
+  // demo hook (?demo=win|coin|zorume|jackpot|shield|assault|goldrule)
   const demoFired = useRef(false);
   useEffect(() => {
     if (demoFired.current) return;
     const demo = new URLSearchParams(window.location.search).get('demo');
     const F = DICE_FACES;
-    const map = { zorume:[F.JACKPOT,F.JACKPOT,F.JACKPOT], attackz:[F.ATTACK,F.ATTACK,F.ATTACK], stealz:[F.STEAL,F.STEAL,F.STEAL], shield:[F.SHIELD,F.SHIELD,F.SHIELD], jackpot:[F.JACKPOT,F.JACKPOT,F.COIN], coin:[F.COIN,F.COIN,F.COIN], win:[F.COIN,F.COIN,F.ATTACK] };
+    const map = {
+      zorume:[F.JACKPOT,F.JACKPOT,F.JACKPOT], attackz:[F.ATTACK,F.ATTACK,F.ATTACK], stealz:[F.STEAL,F.STEAL,F.STEAL],
+      shield:[F.SHIELD,F.SHIELD,F.SHIELD], jackpot:[F.JACKPOT,F.JACKPOT,F.COIN], coin:[F.COIN,F.COIN,F.COIN], win:[F.COIN,F.COIN,F.ATTACK],
+      assault:[F.ATTACK,F.ATTACK,F.STEAL,F.STEAL], goldrule:[F.COIN,F.COIN,F.JACKPOT,F.JACKPOT],
+    };
     if (!map[demo]) return;
     demoFired.current = true;
-    const t = setTimeout(() => doRoll(map[demo]), 900);
+    const faces = map[demo];
+    if (faces.length !== diceCount && setDiceCount) {
+      // 合体役デモ（4個構成）は昇格させ、diceCountが実際に揃った時点でpendingForcedRef側の効果が振る（900ms後）
+      pendingForcedRef.current = { faces, delay: 900 };
+      setDiceCount(faces.length);
+      return;
+    }
+    const t = setTimeout(() => doRollRef.current && doRollRef.current(faces), 900);
     return () => clearTimeout(t);
-  }, [doRoll]);
+  }, []);   // eslint-disable-line — 初回のみ・doRollRef経由で最新のdoRollを使う
 
   const pct = Math.max(0, Math.min(100, (game.rolls/game.rollsMax)*100));
 
@@ -797,7 +979,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
           <div className="opp-label">対戦相手</div>
           <div className="opp-name">{game.opponent.name}</div>
         </div>
-        <div className="opp-coins">💰 {fmt(game.opponent.coins)}</div>
+        <div className="opp-coins"><Img src={IMG+'ui/Koban_Small.png'} className="oc-ico" fallback={<span>💰</span>} /> {fmt(game.opponent.coins)}</div>
       </div>
 
       {/* 獲得数字は対戦相手カードの直下（Coin Master本家の上部獲得表示に倣い、数字のみ） */}
@@ -808,19 +990,19 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
 
       {/* dice area */}
       <div className="dice-area">
-        <div className="dice-stage">
-          <div className={"dice-row" + (rollAnim==='3d' ? ' d3' : '')}>
+        <div className={"dice-stage" + (comboFx ? ' combo' : '') + (noPodium ? ' no-podium' : '')} style={comboFx ? { '--cc': comboFx.cc } : undefined}>
+          <div className={"dice-row" + (rollAnim==='3d' ? ' d3' : '') + (diceCount===4?' n4':diceCount===5?' n5':'')}>
             {rollAnim==='3d'
-              ? dice.map((f,i)=><Die3D key={i} face={f} rollKey={roll3dKey} index={i} />)
-              : dice.map((f,i)=><Die key={i} face={f} phase={phases[i]} anim={rollAnim} />)}
+              ? dice.map((f,i)=><Die3D key={i} face={f} rollKey={roll3dKey} index={i} lit={!!comboFx && comboFx.indices.has(i)} />)
+              : dice.map((f,i)=><Die key={i} face={f} phase={phases[i]} anim={rollAnim} lit={!!comboFx && comboFx.indices.has(i)} />)}
           </div>
         </div>
       </div>
 
-      {/* roll point (bet) toggle: タップで×1→×2→×3→×1と循環。消費ロール＆報酬に同倍率。 */}
+      {/* dice count selector: タップで3個→4個→5個→3個と循環。消費ロールはダイス数ぶん（3/4/5）。4個以上で合体役（強襲/黄金律）が抽選対象に入る。 */}
       <button className="bet-toggle" disabled={isRolling}
-        onClick={()=>{ SFX.tap(); setBet && setBet(b => (b % 3) + 1); }}>
-        ×{bet} <span className="bt-ico">🎲</span>
+        onClick={()=>{ SFX.tap(); setDiceCount && setDiceCount(c => c>=DICE_MAX ? DICE_MIN : c+1); }}>
+        <Img src={IMG+'ui/Icon_Dice.png'} className="bt-ico" fallback={<span>🎲</span>} />{diceCount}個
       </button>
 
       {/* energy bar */}
@@ -828,7 +1010,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         <div className="energy-top">
           <span>残りロール</span>
           <span className="energy-right">
-            <button className="free-roll-btn" onClick={()=>{ grantRolls && grantRolls(5); showToast('🎲 ロール +5！'); }}>🎬 無料+5</button>
+            <button className="free-roll-btn" onClick={()=>{ grantRolls && grantRolls(15); showToast('🎲 ロール +15！'); }}>🎬 無料+15</button>
             <span><b>{game.rolls}</b> / {game.rollsMax}</span>
           </span>
         </div>
@@ -838,7 +1020,7 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
 
       {/* bottom dock: ロールボタンのみ（遷移先は左右サイドレールへ移動） */}
       <div className="bottom-dock">
-        <RollButton disabled={isRolling || game.rolls < bet} onRoll={doRoll} auto={auto} onToggleAuto={setAuto} />
+        <RollButton disabled={isRolling || game.rolls < game.rollCost} onRoll={doRoll} auto={auto} onToggleAuto={setAuto} />
       </div>
 
       {/* jackpot effect + gain float (on top). coin burst is rendered behind the dice above. */}
@@ -846,8 +1028,14 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
         {fx.jackpot && <Img key={'j'+fx.key} src={IMG+'effect/Effect_Jackpot.png'} className="jackpot-fx on" fallback={<div/>} />}
       </div>
 
-      {/* コイン獲得の大きなパーティクル演出（画面下から噴き上がる）。終了でロール解放＝次ロールへ。 */}
-      {coinSpray>0 && <CoinParticles key={'cp'+coinSpray} onDone={finishRoll} />}
+      {/* コイン獲得の大きなパーティクル演出（画面下から噴き上がる）。
+          通常役は判定直後に既に解放済みのため、ここでの終了は見た目のみ（onDone未使用＝コインは並行して流れ続ける）。
+          JP等の特殊役のみ coinGateRef が true になり、終了(onDone)でロール解放する。 */}
+      {coinSpray>0 && <CoinParticles key={'cp'+coinSpray} onDone={coinGateRef.current ? finishRoll : undefined} />}
+
+      {/* 合体役（強襲/黄金律）カットイン：ぞろ目のZorumeOverlayと同格の「見得」。dice-stageは覆わず、
+          下の合体ハイライト（comboFx）が透けて見え続ける。終了後にonComboCutinDoneがonComboへ合流する。 */}
+      {comboCutin && <ComboCutin comboId={comboCutin} onComplete={onComboCutinDone} />}
 
       {/* DEBUG — force any hand */}
       <button className="debug-fab" onClick={()=>setShowDebug(v=>!v)} title="デバッグ">🐞</button>
@@ -856,18 +1044,77 @@ function MainRoll({ game, addCoins, grantShields, grantRolls, showToast, go, onZ
           <div className="debug-head">🐞 デバッグ：役を指定</div>
           {DEBUG_HANDS.map(h =>
             <button key={h.key} className="debug-item" disabled={isRolling}
-              onClick={()=>{ setShowDebug(false); doRoll(h.faces || undefined); }}>
+              onClick={()=>{
+                setShowDebug(false);
+                const isPureZorome = h.faces && h.faces.every(f => f.id === h.faces[0].id);
+                if (isPureZorome && h.faces.length !== diceCount) {
+                  // ぞろ目系は現在のdiceCount長へパディング（k=diceCountで検証可能。diceCount自体は変えない）
+                  doRoll(Array(diceCount).fill(h.faces[0]));
+                } else if (h.faces && h.faces.length !== diceCount && setDiceCount) {
+                  // 強襲/黄金律など4/5個構成の役はダイス数を自動で合わせてから振る。
+                  // diceCountが実際に揃った時点（[diceCount]のuseEffect）でpendingForcedRef側が消費して振る。
+                  pendingForcedRef.current = { faces: h.faces, delay: 0 };
+                  setDiceCount(h.faces.length);
+                } else {
+                  doRoll(h.faces || undefined);
+                }
+              }}>
               {h.label}
             </button>)}
           {onToggleRollAnim &&
             <button className="debug-item" disabled={isRolling} onClick={onToggleRollAnim}>
               🎬 ダイス演出: {rollAnim==='3d' ? '3D立体' : rollAnim==='toss' ? '飛ばし（下から）' : '回転（従来）'}
             </button>}
+          <button className="debug-item" onClick={()=>setNoPodium(v=>!v)}>🍽️ 台座: {noPodium ? 'OFF' : 'ON'}</button>
           {onRerollShop && <button className="debug-item" onClick={()=>{ onRerollShop(); }}>🛒 ショップ再ロール（4種入替）</button>}
           {onResetShop && <button className="debug-item" onClick={()=>{ onResetShop(); }}>🛒 ショップ購入リセット</button>}
           {onDebugTickets && <button className="debug-item" onClick={()=>{ onDebugTickets(); }}>🎟️ レイドチケット +5</button>}
           <button className="debug-close" onClick={()=>setShowDebug(false)}>閉じる</button>
         </div>}
+    </div>
+  );
+}
+
+/* 合体役（強襲/黄金律）成立時のカットイン。ZorumeOverlay/ScrollBannerと同じ「見得」のリズム（約1.3秒）だが、
+   全画面を覆う不透明背景は敷かない（下のdice-stageに乗った合体ハイライト＝comboFxの発光リング/ステージオーラを
+   隠さないため）。MainRoll内にオーバーレイ表示し、終了後にonComboCutinDoneがonComboへ合流して画面遷移／JP演出を進める。 */
+const COMBO_CUTIN_DEF = {
+  assault:  { title:'強襲！！',   grad:`linear-gradient(135deg, ${FACE_COLOR.attack}, ${FACE_COLOR.steal})`,   faces:['attack','steal'] },
+  goldrule: { title:'黄金律！！', grad:`linear-gradient(135deg, var(--gold-light), ${FACE_COLOR.jackpot})`,     faces:['coin','jackpot'] },
+};
+function ComboCutin({ comboId, onComplete }) {
+  const [phase, setPhase] = useState('flash'); // flash → show → transition
+  useEffect(() => {
+    const t1 = setTimeout(()=>setPhase('show'), 220);
+    const t2 = setTimeout(()=>setPhase('transition'), 900);
+    const t3 = setTimeout(()=>onComplete(), 1300);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [comboId, onComplete]);
+
+  const def = COMBO_CUTIN_DEF[comboId];
+  if (!def) return null;
+  const [faceA, faceB] = def.faces;
+  const imgA = DICE_FACES[faceA.toUpperCase()].image, imgB = DICE_FACES[faceB.toUpperCase()].image;
+  return (
+    <div className="combo-cutin" style={{ '--cc': FACE_COLOR[faceA] }}>
+      <div className="cc-flash" />
+      <div className="cc-scrim" />
+      <div className="cc-banner">
+        <Img src={IMG+'ui/UI_Scroll.png'} className="scroll-bg" fallback={<div className="scroll-bg-fallback" />} />
+        <div className="scroll-content cc-content">
+          <div className="cc-flank a">
+            <Img src={imgA} className="cc-flank-ico" fallback={<span className="face-emoji">{FACE_EMOJI[faceA]}</span>} />
+          </div>
+          <div className="cc-text">
+            <div className="scroll-title gold-text">{def.title}</div>
+            <div className="cc-badge" style={{ background: def.grad }}>合体役 ×1.15</div>
+          </div>
+          <div className="cc-flank b">
+            <Img src={imgB} className="cc-flank-ico" fallback={<span className="face-emoji">{FACE_EMOJI[faceB]}</span>} />
+          </div>
+        </div>
+      </div>
+      {phase==='transition' && <div className="z-next">つぎへ →</div>}
     </div>
   );
 }
@@ -903,7 +1150,7 @@ function ZorumeOverlay({ faceId, onComplete }) {
         <Img src={IMG+'ui/UI_Scroll.png'} className="scroll-bg" fallback={<div className="scroll-bg-fallback" />} />
         <div className="scroll-content">
           <div className="scroll-title gold-text">{faceId==='jackpot' ? 'JACKPOT!!' : 'ぞろ目！！'}</div>
-          <div className="z-badge" style={{ background:color }}>{FACE_EMOJI[faceId]} {FACE_LABEL[faceId]} ぞろ目</div>
+          <div className="z-badge" style={{ background:color }}><Img src={FACE_IMG_BY_ID[faceId]} className="zb-ico" fallback={<span>{FACE_EMOJI[faceId]}</span>} /> {FACE_LABEL[faceId]} ぞろ目</div>
         </div>
       </div>
       <div className="z-chara"><Img src={IMG+'char/Chara_NinjaDog.png'} fallback={<span style={{fontSize:80}}>🐕</span>} /></div>
@@ -953,8 +1200,8 @@ function BonusDie3D({ table, result, rollKey }) {
   );
 }
 
-function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
-  const table = BONUS_DICE_TABLES[trigger] || BONUS_DICE_TABLES.coin;
+function BonusRoll({ trigger, stage=3, k=3, onComplete }) {
+  const table = trigger==='coin' ? coinBonusTableForK(k) : (BONUS_DICE_TABLES[trigger] || BONUS_DICE_TABLES.coin);
   const [phase, setPhase] = useState('rolling'); // rolling → result
   const [result, setResult] = useState(null);
   const [rollKey, setRollKey] = useState(0);
@@ -963,8 +1210,8 @@ function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
 
   const base = coinBaseForStage(stage);
   const coinGain = result
-    ? (trigger==='coin'    ? base * result.multiplier * bet
-     : trigger==='jackpot' ? (base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * bet
+    ? (trigger==='coin'    ? base * result.multiplier
+     : trigger==='jackpot' ? (base * result.coinMultiplier + (result.treasure ? 50000 : 0))
      : 0)
     : 0;
   const gainDisplay = useCountUp(coinGain, 900, phase==='result' && coinGain>0);
@@ -973,7 +1220,7 @@ function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
   // 入場後まもなく自動で振る：金ダイスが跳ね上がって転がり、当選倍率の面で着地
   useEffect(() => {
     const t = setTimeout(() => {
-      const res = rollBonusDice(trigger);
+      const res = table[Math.floor(Math.random()*table.length)];
       setResult(res); setRollKey(1); SFX.roll();
       timerRef.current = setTimeout(() => { setPhase('result'); SFX.coin(); }, 1650);
     }, 500);
@@ -985,14 +1232,15 @@ function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
       <div className="bonus-dim" />
       <ScrollBanner title="ボーナスロール！" className="bonus-title" />
       <div className="trigger-card" style={{ borderColor:color }}>
-        <span className="trigger-emoji">{FACE_EMOJI[trigger]}{FACE_EMOJI[trigger]}{FACE_EMOJI[trigger]}</span>
+        <span className="trigger-emoji">
+          {[0,1,2].map(i => <Img key={i} src={FACE_IMG_BY_ID[trigger]} className="tg-ico" fallback={<span>{FACE_EMOJI[trigger]}</span>} />)}
+        </span>
         <span>{FACE_LABEL[trigger]} ぞろ目</span>
       </div>
 
       {/* 倍率の元金は最初から表示（出た倍率が掛かる基準額） */}
       <div className="bonus-base">
         倍率の元金 <Img src={IMG+'ui/Koban_Small.png'} className="bb-ico" fallback={<span>🪙</span>} /> <b className="gold-text">{fmt(base)}</b>
-        {bet>1 && <span className="bb-bet">（×{bet}ロールポイント）</span>}
       </div>
 
       <div className="bonus-dice-wrap">
@@ -1006,7 +1254,6 @@ function BonusRoll({ trigger, stage=3, bet=1, onComplete }) {
           <div className="br-formula">
             <span className="br-term"><Img src={IMG+'ui/Koban_Small.png'} className="brf-ico" fallback={<span>🪙</span>} />{fmt(base)}</span>
             <span className="br-op">× {result.multiplier}</span>
-            {bet>1 && <span className="br-op">× {bet}</span>}
           </div>
           <div className="br-eq gold-text">= +{fmt(gainDisplay)} 🪙</div>
         </div>}
@@ -1069,23 +1316,29 @@ function CoinParticles({ count=30, onDone }) {
   );
 }
 
-function AttackSelect({ opponent, bonusResult, stage=3, ignoreShield=false, onCancel, onResolve }) {
+function AttackSelect({ opponent, bonusResult, stage=3, k=3, ignoreShield=false, onResolve }) {
   // opponent's village（建設画面と同じ見た目）。建物を直接タップして攻撃。
   const [village] = useState(() => themedVillage(stage, { levels:{ castle:3, storehouse:2, statue:2, garden:1 } }));
-  const [hit, setHit] = useState(null);      // 攻撃中の建物
+  const [hit, setHit] = useState(null);      // 攻撃中の建物（起点タップ）
+  const [hitGroup, setHitGroup] = useState([]); // 起点タップ＋自動巻き込み分（k連動、破壊はまとめて1タップ）
   const [phase, setPhase] = useState(null);  // 'coin' | 'shield' | 'broken'
   const [broken, setBroken] = useState([]);  // 破壊済みの建物id
   const rate = Math.round((bonusResult?.coinRate ?? 0.25) * 100) || 25;
+  const destroyCount = ATTACK_DESTROY_BY_K[k] || 1;   // k=3→1棟、4→2棟、5→3棟（まとめて1タップで破壊）
 
   const pick = (it) => {
     if (hit) return;                          // 1回のみ攻撃
     const success = opponent.shields <= 0 || ignoreShield;
     setHit(it);
-    if (success) { setPhase('burst'); SFX.attack(); }   // まず派手なインパクト → コイン → 破壊
-    else { setPhase('shield'); SFX.shield(); setTimeout(()=>onResolve(it, false), 760); }
+    if (success) {
+      // タップ棟＋価値（建物レベル）降順で残り(destroyCount-1)棟を自動巻き込み
+      const others = village.filter(v => v.id !== it.id).sort((a,b) => b.level - a.level);
+      setHitGroup([it.id, ...others.slice(0, destroyCount - 1).map(v => v.id)]);
+      setPhase('burst'); SFX.attack();   // まず派手なインパクト → コイン → 破壊
+    } else { setPhase('shield'); SFX.shield(); setTimeout(()=>onResolve(it, false), 760); }
   };
   const onSprayDone = () => {
-    setBroken(b => hit ? [...b, hit.id] : b);  // 建物を破壊状態へ
+    setBroken(b => [...new Set([...b, ...hitGroup])]);  // 巻き込み含めまとめて破壊状態へ
     setPhase('broken');
     SFX.coin();
     setTimeout(()=>onResolve(hit, true), 700);   // 破壊状態を見せてから結果へ
@@ -1094,9 +1347,7 @@ function AttackSelect({ opponent, bonusResult, stage=3, ignoreShield=false, onCa
   return (
     <div className="screen attack-screen" style={{ backgroundImage:`url("${IMG}bg/BG_Attack.png")` }}>
       <div className="mini-bar">
-        <button className="ghost-btn" onClick={onCancel}>← 戻る</button>
         <span className="foe-coins"><Img src={IMG+'ui/Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponent.coins)}</span>
-        <button className="ghost-btn danger" onClick={onCancel}>逃げる</button>
       </div>
       <ScrollBanner title="攻撃する建物をタップ！" className="attack-title" />
       <div className="asym-note attack">⚔️ 侍の攻撃はシールドで防がれることがある</div>
@@ -1124,7 +1375,7 @@ function AttackSelect({ opponent, bonusResult, stage=3, ignoreShield=false, onCa
         <div className="predict-frame">
           <div>💥 破壊成功時: 相手コインの約 <b>{rate}%</b> 獲得</div>
           <div>🛡️ シールド時: 相手コインの約 <b>7%</b> 獲得</div>
-          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label} ダメージ{bonusResult.damage||0}</div>}
+          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label} 破壊{destroyCount}棟（1タップ）</div>}
         </div>
       </div>
 
@@ -1166,16 +1417,18 @@ function AttackResult({ result, onNext, opponentName }) {
 }
 
 /* ============================================================
-   SCREEN 06 — STEAL
+   SCREEN 05B — ASSAULT（合体役「強襲」＝attack×steal専用ミニ画面／StealScreenベースの3タップ選択制）
+   入場時に確定するのは attackFace/aFull/シールド枚数のスナップショットのみ。
+   各棟の略奪額はタップ時にここで stealFromBuilding() を引く（steal本編と同一タイミング）。
+   3タップ後にサマリー（合体×COMBO_K）を約 ASSAULT_SUMMARY_HOLD ms 見せて自動で受け取り／タップでスキップ可。
    ============================================================ */
-function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1, onReceive, stealMult=1, autoLastSpot=false, stage=3, pieceBonus=0, ownedPieces={} }) {
-  // 相手の村（建設画面と同じ配置）を表示し、建物を直接タップして盗む。
+function AssaultScreen({ opponentName, opponentCoins=0, opponentImg='', stealMult=1, ignoreShield=false, stage=3, attackFace, aFull=0, opponentShields=0, onReceive }) {
   const [village] = useState(() => themedVillage(stage, { levels:{ castle:3, storehouse:2, statue:2, garden:1 } }));
-  const [phase, setPhase] = useState('intro'); // intro → selecting → summary
-  const [picks, setPicks] = useState([]);      // {id,label,coinGain,hasBox}
-  const [swiping, setSwiping] = useState(null);// 盗み演出中の建物id
-  const [boxGot, setBoxGot] = useState(null);  // 宝箱GET演出中の建物id
-  const [boxRewards, setBoxRewards] = useState([]); // 宝箱の中身（カード or 仲間かけら／同時には出ない）
+  const [phase, setPhase] = useState('intro');   // intro → selecting → summary
+  const [picks, setPicks] = useState([]);        // {id,label,coinGain,shielded}
+  const [swiping, setSwiping] = useState(null);  // 演出中の建物id
+  const shieldsLeftRef = useRef(opponentShields);
+  const doneRef = useRef(false);
 
   useEffect(() => { const t = setTimeout(()=>setPhase('selecting'), 600); return ()=>clearTimeout(t); }, []);
 
@@ -1183,19 +1436,121 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
 
   const pick = (it) => {
     if (phase!=='selecting' || swiping || pickedIds.includes(it.id) || picks.length>=3) return;
+    setSwiping(it.id); SFX.attack();
+  };
+  // 破壊+略奪演出（StealSwipe流用）が終わった瞬間に略奪額を抽選（stealFromBuilding）＝steal本編と同じタイミング。
+  const finalizeSwipe = (it) => {
+    const shielded = !ignoreShield && shieldsLeftRef.current > 0;
+    const raw = stealFromBuilding(it).coinGain;
+    const coinGain = Math.round(raw * stealMult * (shielded ? ASSAULT_SHIELD_STEAL_DECAY : 1));
+    if (shielded) shieldsLeftRef.current -= 1;
+    const next = [...picks, { id:it.id, label:it.label, coinGain, shielded }];
+    setPicks(next); setSwiping(null);
+    shielded ? SFX.shield() : SFX.coin();
+    if (next.length >= 3) setTimeout(() => setPhase('summary'), 650);
+  };
+
+  const S = picks.reduce((s,p) => s + p.coinGain, 0);
+  const unblocked = picks.filter(p => !p.shielded).length;         // 防がれずに通った棟数（0〜3）＝追い銭の按分基準
+  const A_eff = Math.round(aFull * unblocked / 3);
+  const total = Math.round((S + A_eff) * COMBO_K);
+  const shieldsConsumed = picks.filter(p => p.shielded).length;
+  const totalDisplay = useCountUp(total, 1000, phase==='summary');
+  const picksLeft = Math.max(0, 3 - picks.length);
+
+  const finish = () => { if (doneRef.current) return; doneRef.current = true; onReceive(total, { shieldsConsumed }); };
+  useEffect(() => {
+    if (phase !== 'summary') return;
+    const t = setTimeout(finish, ASSAULT_SUMMARY_HOLD);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  return (
+    <div className="screen assault-screen" style={{ backgroundImage:`url("${IMG}bg/BG_Assault.png")` }}>
+      {phase==='intro' && <Img src={IMG+'effect/Effect_Smoke.png'} className="steal-smoke" fallback={<div className="steal-smoke-fallback" />} />}
+      <div className="mini-bar">
+        <div className="steal-foe">
+          <div className="steal-foe-face"><Img key={opponentImg} src={opponentImg} className="sff-img" fallback={<span className="sff-emoji">👺</span>} /></div>
+          <div className="steal-foe-info">
+            <span className="steal-foe-name">⚔️ {opponentName}</span>
+            <span className="steal-foe-coins"><Img src={IMG+'ui/Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponentCoins)}</span>
+          </div>
+        </div>
+      </div>
+
+      <ScrollBanner title="破壊する城をタップ！" sub={`${'●'.repeat(Math.min(picks.length,3))}${'○'.repeat(picksLeft)}`} />
+
+      {/* 相手の村：建物を直接タップして破壊+略奪 */}
+      <div className="castle-stage village">
+        {village.map(it => {
+          const p = picks.find(x => x.id === it.id);
+          const isSw = swiping === it.id;
+          return (
+            <div key={it.id} className={"village-item stealable " + (p ? (p.shielded ? 'shielded ' : 'destroyed ') : '') + (isSw?'swiping ':'')}
+                 style={{ left:it.x, top:it.y, width:it.w }} onClick={()=>pick(it)}>
+              <Img src={it.stages[it.level]} className="vi-img" style={{ width:it.w }} fallback={<span className="vi-emoji">{it.emoji}</span>} />
+              {!p && !isSw && phase==='selecting' && <div className="target-overlay"><Img src={IMG+'ui/UI_Target.png'} className="reticle" fallback={<span className="reticle-fallback">◎</span>} /></div>}
+              {isSw && <FrameAnim name="effect/StealSwipe" count={7} interval={80} className="stealfx" onDone={()=>finalizeSwipe(it)} />}
+              {p && !p.shielded && <Img src={IMG+'effect/Effect_Rubble.png'} className="vi-rubble" fallback={<div/>} />}
+              {p && p.shielded && <Img src={IMG+'effect/Effect_Shield.png'} className="vi-shieldfx" fallback={<span style={{fontSize:44}}>🛡️</span>} />}
+              {p && <div className="sc-loot"><span className="sc-coin gold-text">+{fmt(p.coinGain)}</span></div>}
+              <span className="target-label">{it.label}</span>
+              {p && <span className="steal-check">✓</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      {phase==='summary' &&
+        <div className="steal-summary-overlay" onClick={finish}>
+          <div className="steal-summary" onClick={e=>e.stopPropagation()}>
+            <div className="ss-row">🥷 略奪: <b>+{fmt(S)}</b>（3棟）</div>
+            <div className="ss-row">⚔️ 追い銭: <b>+{fmt(A_eff)}</b>（{unblocked}/3通過）</div>
+            {shieldsConsumed>0 && <div className="ss-row mult">🛡️ {shieldsConsumed}棟が防がれた（略奪×{ASSAULT_SHIELD_STEAL_DECAY}・追い銭按分）</div>}
+            <div className="ss-row mult">合体 ×{COMBO_K}</div>
+            <div className="ss-total gold-text">= +{fmt(totalDisplay)} 🪙</div>
+            <button className="big-btn green-btn" onClick={finish}>受け取る！</button>
+          </div>
+        </div>}
+
+      <div className="assault-chara"><Img src={IMG+'char/Chara_NinjaRaider.png'} fallback={<span style={{fontSize:70}}>🥷</span>} /></div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SCREEN 06 — STEAL
+   ============================================================ */
+function StealScreen({ opponentName, opponentCoins=0, opponentImg='', onReceive, stealMult=1, autoLastSpot=false, stage=3, k=3, pieceBonus=0, ownedPieces={} }) {
+  // 相手の村（建設画面と同じ配置）を表示し、建物を直接タップして盗む。
+  const [village] = useState(() => themedVillage(stage, { levels:{ castle:3, storehouse:2, statue:2, garden:1 } }));
+  const [phase, setPhase] = useState('intro'); // intro → selecting → summary
+  const [picks, setPicks] = useState([]);      // {id,label,coinGain,hasBox}
+  const [swiping, setSwiping] = useState(null);// 盗み演出中の建物id
+  const [boxGot, setBoxGot] = useState(null);  // 宝箱GET演出中の建物id
+  const [boxRewards, setBoxRewards] = useState([]); // 宝箱の中身（カード or 仲間かけら／同時には出ない）
+  const target = STEAL_TAPS_BY_K[k] || 3;      // タップ棟数：k=3→3、k=4/5→4（村は4棟が上限）
+
+  useEffect(() => { const t = setTimeout(()=>setPhase('selecting'), 600); return ()=>clearTimeout(t); }, []);
+
+  const pickedIds = picks.map(p => p.id);
+
+  const pick = (it) => {
+    if (phase!=='selecting' || swiping || pickedIds.includes(it.id) || picks.length>=target) return;
     setSwiping(it.id); SFX.steal();   // 盗む演出 → 完了でコイン確定
   };
-  // 影のくノ一（autoLastSpot）は3件盗んだ後、残り1件も自動で強奪。
+  // 影のくノ一（autoLastSpot）はtarget件盗んだ後、残り1件も自動で強奪（target<4のときのみ。k≥4は既に全棟タップ済みで対象なし＝二重加算しない）。
   const finalizeSwipe = (it) => {
     let next = [...picks, stealFromBuilding(it)];
-    if (next.length === 3 && autoLastSpot) {
+    if (next.length === target && autoLastSpot && target < 4) {
       const rest = village.find(v => !next.some(p => p.id === v.id));
       if (rest) next = [...next, { ...stealFromBuilding(rest), auto:true }];
     }
     const gotBox = next.slice(picks.length).some(r=>r.hasBox);
     setPicks(next); setSwiping(null); SFX.coin();
     if (gotBox) { setBoxGot(it.id); SFX.jackpot(); setTimeout(()=>setBoxGot(null), 1000); }
-    if (next.length >= 3) {
+    if (next.length >= target) {
       // 宝箱の中身を確定（1箱＝カード or 仲間のどちらか一方）。サマリーで演出リビール。
       const rewards = next.filter(p=>p.hasBox).map(()=>rollStealBoxReward(stage, 0.25, pieceBonus, ownedPieces));
       setBoxRewards(rewards);
@@ -1205,9 +1560,9 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
 
   const subtotal = picks.reduce((s,r)=>s+r.coinGain, 0);
   const boxCount = picks.filter(p=>p.hasBox).length;   // 宝箱の数＝獲得カード枚数
-  const total = Math.round(subtotal * betMult * stealMult);   // ロールポイント(betMult)＋装備キャラ(stealMult)
+  const total = Math.round(subtotal * stealMult * (k>=5 ? STEAL_K5_MULT : 1));   // 装備キャラ(stealMult) × 5面ボーナス
   const totalDisplay = useCountUp(total, 1000, phase==='summary');
-  const picksLeft = Math.max(0, 3 - picks.length);
+  const picksLeft = Math.max(0, target - picks.length);
 
   return (
     <div className="screen steal-screen" style={{ backgroundImage:`url("${IMG}bg/BG_Steal.png")` }}>
@@ -1220,10 +1575,9 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
             <span className="steal-foe-coins"><Img src={IMG+'ui/Koban_Small.png'} className="fc-ico" fallback={<span>💰</span>} />{fmt(opponentCoins)}</span>
           </div>
         </div>
-        <button className="ghost-btn danger" onClick={()=>onReceive(0)}>逃げる</button>
       </div>
 
-      <ScrollBanner title="盗む建物をタップ！" sub={`${'●'.repeat(Math.min(picks.length,3))}${'○'.repeat(picksLeft)}`} className="steal-title" />
+      <ScrollBanner title="盗む建物をタップ！" sub={`${'●'.repeat(Math.min(picks.length,target))}${'○'.repeat(picksLeft)}`} className="steal-title" />
 
       {/* 相手の村：建物を直接タップして盗む */}
       <div className="castle-stage village">
@@ -1255,10 +1609,10 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', betMult=1,
       {phase==='summary'
         ? <div className="steal-summary-overlay">
             <div className="steal-summary">
-              <div className="ss-row">{autoLastSpot ? '４か所の合計' : '3か所の合計'}: <b>+{fmt(subtotal)}</b></div>
-              {autoLastSpot && <div className="ss-row mult">🥷 影のくノ一：最後の1か所も強奪！</div>}
-              {betMult>1 && <div className="ss-row mult">× {betMult}倍（ロールポイント）</div>}
+              <div className="ss-row">{picks.length}か所の合計: <b>+{fmt(subtotal)}</b></div>
+              {autoLastSpot && target < 4 && <div className="ss-row mult">🥷 影のくノ一：最後の1か所も強奪！</div>}
               {stealMult>1 && <div className="ss-row mult">× {stealMult}倍（仲間）</div>}
+              {k>=5 && <div className="ss-row mult">⭐ 5面ボーナス ×{STEAL_K5_MULT}</div>}
               <div className="ss-total gold-text">= +{fmt(totalDisplay)} 🎉</div>
               {boxRewards.length>0 &&
                 <div className="steal-rewards">
@@ -1314,8 +1668,8 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
     }
     setVillage(nv);
     setTappedId(null);
-    grantRolls && grantRolls(25);           // ステージクリア報酬：ダイスロール
-    showToast(headStart>0 ? '次のステージへ！ 🎲+25 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
+    grantRolls && grantRolls(75);           // ステージクリア報酬：ダイスロール
+    showToast(headStart>0 ? '次のステージへ！ 🎲+75 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +75 獲得');
   };
 
   const costOf = (it) => it.level < itemMax(it) ? Math.round(buildCost(it.level, game.stage) * (1 - buildDiscount)) : 0;
@@ -1333,7 +1687,7 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
     complete ? SFX.stage() : SFX.build();
     setVillage(prev => prev.map(x => x.id===it.id ? { ...x, level:lvl } : x));
     // レベルアップでダイスロール獲得（完成時は多め）
-    const rr = complete ? 10 : 3;
+    const rr = complete ? 30 : 9;
     grantRolls && grantRolls(rr);
     showToast(complete ? `${it.emoji} 完成！ 🎲ロール +${rr}！` : `${it.emoji} Lv${lvl}！ 🎲ロール +${rr}`);
   };
@@ -1397,50 +1751,50 @@ function CastleScreen({ game, spendCoins, grantRolls, showToast, onBack, onNextS
    COLLECTION — 流派カード（既存アセットを流用）
    ============================================================ */
 const CARD_SETS = [
-  { id:'ninja', name:'忍びの一族', color:'#DB2777', reward:{ rolls:20, coins:50000 }, cards:[
+  { id:'ninja', name:'忍びの一族', color:'#DB2777', reward:{ rolls:60, coins:50000 }, cards:[
     { id:'dog',    name:'忍犬',      img:IMG+'char/Chara_NinjaDog.png' },
     { id:'monkey', name:'忍猿',      img:IMG+'char/Chara_NinjaMonkey.png' },
     { id:'robo',   name:'ロボ忍者',  img:IMG+'char/Chara_RoboNinja.png' },
     { id:'shuri',  name:'秘伝手裏剣', img:IMG+'card/Card_Shuriken.png', gold:true },
   ]},
-  { id:'arms', name:'武具秘伝', color:'#DC2626', reward:{ rolls:30, coins:100000 }, cards:[
+  { id:'arms', name:'武具秘伝', color:'#DC2626', reward:{ rolls:90, coins:100000 }, cards:[
     { id:'katana', name:'刀',     img:IMG+'dice/DiceFace_Attack.png' },
     { id:'shield', name:'盾',     img:IMG+'dice/DiceFace_Shield.png' },
     { id:'smoke',  name:'煙玉',   img:IMG+'effect/Effect_Smoke.png' },
     { id:'jack',   name:'黄金の星', img:IMG+'dice/DiceFace_Jackpot.png', gold:true },
   ]},
-  { id:'castle', name:'名城巡り', color:'#059669', reward:{ rolls:50, coins:300000 }, cards:[
+  { id:'castle', name:'名城巡り', color:'#059669', reward:{ rolls:150, coins:300000 }, cards:[
     { id:'himeji',  name:'姫路城',       img:IMG+'building/Castle_Himeji.png' },
     { id:'windsor', name:'ウィンザー城', img:IMG+'building/Castle_Windsor.png' },
     { id:'taj',     name:'タージ・マハル', img:IMG+'building/Castle_TajMahal.png' },
     { id:'chest',   name:'埋蔵金',       img:IMG+'ui/TreasureBox_Open.png', gold:true },
   ]},
-  { id:'worldE', name:'世界名城・東', color:'#D97706', reward:{ rolls:60, coins:400000 }, cards:[
+  { id:'worldE', name:'世界名城・東', color:'#D97706', reward:{ rolls:180, coins:400000 }, cards:[
     { id:'egypt', name:'ピラミッド',   img:IMG+'building/Castle_Egypt.png' },
     { id:'china', name:'紫禁城',       img:IMG+'building/Castle_China.png' },
     { id:'aztec', name:'太陽の神殿',   img:IMG+'building/Castle_Aztec.png' },
     { id:'sphinx',name:'黄金のスフィンクス', img:IMG+'card/Card_Sphinx.png', gold:true },
   ]},
-  { id:'worldW', name:'世界名城・西', color:'#0EA5E9', reward:{ rolls:80, coins:600000 }, cards:[
+  { id:'worldW', name:'世界名城・西', color:'#0EA5E9', reward:{ rolls:240, coins:600000 }, cards:[
     { id:'greece', name:'パルテノン神殿', img:IMG+'building/Castle_Greece.png' },
     { id:'russia', name:'聖ワシリイ大聖堂', img:IMG+'building/Castle_Russia.png' },
     { id:'arabia', name:'砂漠の宮殿',     img:IMG+'building/Castle_Arabia.png' },
     { id:'dragoncastle', name:'龍宮天空城', img:IMG+'building/Castle_Dragon.png' },
     { id:'risingdragon', name:'昇り龍',   img:IMG+'card/Card_GoldDragon.png', gold:true },
   ]},
-  { id:'rivalsHi', name:'群雄割拠', color:'#B91C1C', reward:{ rolls:70, coins:500000 }, cards:[
+  { id:'rivalsHi', name:'群雄割拠', color:'#B91C1C', reward:{ rolls:210, coins:500000 }, cards:[
     { id:'shogun',  name:'将軍 徳川',  img:IMG+'opp/Opp_Shogun.png' },
     { id:'daimyo',  name:'大名 織田',  img:IMG+'opp/Opp_Daimyo.png' },
     { id:'general', name:'侍大将 武田', img:IMG+'opp/Opp_General.png' },
     { id:'helm',    name:'覇王の兜',    img:IMG+'card/Card_Helm.png', gold:true },
   ]},
-  { id:'rivalsMid', name:'忍びの好敵手', color:'#7C3AED', reward:{ rolls:50, coins:300000 }, cards:[
+  { id:'rivalsMid', name:'忍びの好敵手', color:'#7C3AED', reward:{ rolls:150, coins:300000 }, cards:[
     { id:'hattori',  name:'忍者頭 服部',  img:IMG+'opp/Opp_NinjaChief.png' },
     { id:'ayame',    name:'くノ一 あやめ', img:IMG+'opp/Opp_Kunoichi.png' },
     { id:'lordtanaka', name:'城主 田中',  img:IMG+'opp/Opp_LordTanaka.png' },
     { id:'scroll',   name:'秘伝の巻物',    img:IMG+'card/Card_Scroll.png', gold:true },
   ]},
-  { id:'rivalsLo', name:'市井の者', color:'#65A30D', reward:{ rolls:40, coins:200000 }, cards:[
+  { id:'rivalsLo', name:'市井の者', color:'#65A30D', reward:{ rolls:120, coins:200000 }, cards:[
     { id:'echigoya', name:'豪商 越後屋',  img:IMG+'opp/Opp_Merchant.png' },
     { id:'sasaki',   name:'浪人 佐々木',  img:IMG+'opp/Opp_Ronin.png' },
     { id:'gonbei',   name:'足軽 権兵衛',  img:IMG+'opp/Opp_Ashigaru.png' },
@@ -1604,10 +1958,10 @@ const CHAR_SHOP_PRICE = {
 };
 // こばんで買える消耗品（何度でも購入可）
 const KOBAN_SHOP = [
-  { id:'roll30',  label:'ロール +30', sub:'🎲', coins:60000,  rolls:30 },
-  { id:'roll80',  label:'ロール +80', sub:'🎲', coins:150000, rolls:80 },
-  { id:'shield1', label:'シールド +1', sub:'🛡️', coins:120000, shields:1 },
-  { id:'ticket1', label:'レイド券 +1', sub:'🎟️', coins:100000, tickets:1 },
+  { id:'roll30',  label:'ロール +90', sub:'🎲', subImg:'ui/Icon_Dice.png',   coins:60000,  rolls:90 },
+  { id:'roll80',  label:'ロール +240', sub:'🎲', subImg:'ui/Icon_Dice.png',   coins:150000, rolls:240 },
+  { id:'shield1', label:'シールド +1', sub:'🛡️', subImg:'ui/Icon_Shield.png', coins:120000, shields:1 },
+  { id:'ticket1', label:'レイド券 +1', sub:'🎟️', subImg:'ui/Icon_Ticket.png', coins:100000, tickets:1 },
 ];
 const todayStr = () => { try { return new Date().toISOString().slice(0,10); } catch(e){ return '2026-01-01'; } };
 // 日付シードで解放済みキャラから4体を決定（毎日入れ替わる・決定的）
@@ -1637,7 +1991,7 @@ function CollectionScreen({ owned, claimed, onClaim, onBack, showToast }) {
   const has = (id) => (owned[id]||0) > 0;
   return (
     <div className="screen sheet-screen">
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">📖 流派コレクション</span></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Card.png'} className="gl-ico" fallback={<span>📖</span>} />流派コレクション</span></div>
       <div className="sheet-scroll">
         {CARD_SETS.map(set => {
           const done = set.cards.every(c => has(c.id));
@@ -1653,7 +2007,9 @@ function CollectionScreen({ owned, claimed, onClaim, onBack, showToast }) {
               </div>
               <button className={"big-btn small " + (done && !isClaimed ? 'gold-btn':'disabled')}
                 disabled={!done || isClaimed} onClick={()=>onClaim(set)}>
-                {isClaimed ? '受取済み' : done ? `コンプ報酬：🎲${set.reward.rolls} 💰${fmt(set.reward.coins)}` : 'セット未完成'}
+                {isClaimed ? '受取済み' : done
+                  ? <>コンプ報酬：<Img src={IMG+'ui/Icon_Dice.png'} className="rb-ico" fallback={<span>🎲</span>} />{set.reward.rolls} <Img src={IMG+'ui/Koban_Small.png'} className="rb-ico" fallback={<span>💰</span>} />{fmt(set.reward.coins)}</>
+                  : 'セット未完成'}
               </button>
             </div>
           );
@@ -1671,7 +2027,7 @@ function CharactersScreen({ ownedPieces, equipped, onEquip, onBack, stage, charL
   const eqChar = equipped && CHAR_BY_ID[equipped];
   return (
     <div className="screen sheet-screen">
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">🥷 仲間（キャラクター）</span></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Companion.png'} className="gl-ico" fallback={<span>🥷</span>} />仲間（キャラクター）</span></div>
       <div className="char-equip-banner">
         {eqChar
           ? <><Img src={charThumb(eqChar.id)} className="ceb-img" fallback={<span style={{fontSize:32}}>🧙</span>} />
@@ -1705,7 +2061,7 @@ function CharactersScreen({ ownedPieces, equipped, onEquip, onBack, stage, charL
                     <div key={c.id} className={"char-card " + (owned?'owned ':'') + (lockBadge?'char-pending ':'') + (locked?'locked ':'') + (on?'equipped':'')} style={{ '--rk': meta.color }}>
                       <div className="char-card-face">
                         {locked
-                          ? <span className="char-lock">🔒</span>
+                          ? <Img src={IMG+'ui/Icon_Lock.png'} className="char-lock-img" fallback={<span className="char-lock">🔒</span>} />
                           : <Img src={charThumb(c.id)} className="char-card-img" fallback={<span style={{fontSize:38}}>🧙</span>} />}
                         <span className="char-rank-tag" style={{ background: meta.color }}>{meta.short}</span>
                       </div>
@@ -1768,7 +2124,7 @@ const RAID_MAX_BOSS = RAID_BOSSES.length;   // = MAX_STAGE = 10
 
 // --- ボス撃破報酬カーブ ---
 const raidBossCoin  = (n) => 200000 + 300000 * (n - 1);   // boss1=200k … boss10=2.9M
-const raidBossRolls = (n) => 20 + 5 * n;                  // 25 … 70
+const raidBossRolls = (n) => 3 * (20 + 5 * n);            // 75 … 210
 const RAID_MILESTONES = [75, 50, 25];
 const RAID_MILESTONE_FRAC = { 75:0.08, 50:0.10, 25:0.12 };
 const raidMilestoneReward = (n, m) => Math.round(raidBossCoin(n) * RAID_MILESTONE_FRAC[m]);
@@ -1780,12 +2136,64 @@ const raidDamagePct = (partyAP, n) =>
   Math.max(RAID_DMG_MIN, Math.min(RAID_DMG_MAX, Math.round((partyAP + 6) / raidBossTough(n))));
 const RAID_PARTY_MAX = 4;
 
+// マイルストーン到達の祝福オーバーレイ（約1.2秒・タップで即スキップ）。複数同時通過は呼び出し側で合算済み。
+function RaidMsCelebrate({ hits, amount, onDone }) {
+  const doneRef = useRef(false);
+  const finish = () => { if (doneRef.current) return; doneRef.current = true; onDone(); };
+  useEffect(() => {
+    SFX.coin(); SFX.stage();
+    const t = setTimeout(finish, 1200);
+    return () => clearTimeout(t);
+  }, []);
+  const label = hits.join('/');
+  return (
+    <div className="raid-ms-celebrate" onClick={finish}>
+      <div className="rmc-flash" />
+      <FrameAnim name="effect/Effect_Shine" count={8} interval={70} className="rmc-shine" />
+      <div className="rmc-banner">
+        <ScrollBanner title="討伐報酬！" sub={`HP${label}%突破　+${fmt(amount)}🪙`} />
+      </div>
+      <CoinParticles count={24} onDone={() => {}} />
+    </div>
+  );
+}
+
+// 撃破時の豪華祝福オーバーレイ（約1.5秒・タップで即スキップ）
+function RaidDefeatCelebrate({ bossName, onDone }) {
+  const doneRef = useRef(false);
+  const finish = () => { if (doneRef.current) return; doneRef.current = true; onDone(); };
+  useEffect(() => {
+    SFX.jackpot(); SFX.stage();
+    const t = setTimeout(finish, 1500);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="raid-defeat-celebrate" onClick={finish}>
+      <div className="rdc-flash" />
+      <Img src={IMG+'effect/Effect_Jackpot.png'} className="rdc-effect" fallback={<div/>} />
+      <div className="rdc-banner">
+        <ScrollBanner title="討伐成功！！" sub={`${bossName} 討伐！`} />
+      </div>
+      <CoinParticles count={40} onDone={() => {}} />
+    </div>
+  );
+}
+
 function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spendTicket, raid, setRaid, raidParty=[], charLevels={}, stage, onEditParty }) {
   const { boss, hp, awaitingUnlock, allDone, claimedBosses=[], milestonesHit=[], log } = raid;   // レイド進行はApp保持（再入場でリセットしない）
   const bossDef = RAID_BOSSES[boss-1] || RAID_BOSSES[0];
   const defeated = hp <= 0;
   const partyAP = raidParty.reduce((s,id)=>s+attackPower(id, charLevels[id]||1), 0);
   const claimedThis = claimedBosses.includes(boss);
+
+  // マイルストーン祝福・撃破祝福・受取バーストは表示専用のローカルstate（報酬付与ロジック・永続化は変更しない）
+  const [msFx, setMsFx] = useState(null);          // { hits:number[], amount:number } | null
+  const [defeatFx, setDefeatFx] = useState(false); // 撃破時に1回だけtrue
+  const [claimBurst, setClaimBurst] = useState(false);
+
+  useEffect(() => {
+    if (defeated && !claimedBosses.includes(boss)) setDefeatFx(true);
+  }, [defeated, boss]);
 
   const attack = () => {
     if (allDone || awaitingUnlock || defeated) return;
@@ -1800,6 +2208,7 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
       bonus = newlyHit.reduce((s,m) => s + raidMilestoneReward(boss, m), 0);
       addCoins(bonus);
       showToast(`🏯 ボスHP ${newlyHit[newlyHit.length-1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
+      setMsFx({ hits: newlyHit, amount: bonus });
     }
     setRaid(r => ({ ...r, hp: nextHp,
       log: nextHp<=0 ? `🎉 ${bossDef.name} 撃破！一族の勝利！` : `🥷 一族が ${dmg}% 削った！`,
@@ -1810,6 +2219,8 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
     addCoins(raidBossCoin(boss));
     grantRolls && grantRolls(raidBossRolls(boss));
     showToast(`🎲 ロール +${raidBossRolls(boss)} 獲得！`);
+    SFX.jackpot();
+    setClaimBurst(true);
     setRaid(r => {
       const cb = [...r.claimedBosses, boss];
       if (boss >= RAID_MAX_BOSS) return { ...r, claimedBosses:cb, allDone:true };
@@ -1821,7 +2232,7 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
   return (
     <div className="screen sheet-screen" style={{ backgroundImage:`url("${IMG}${bossDef.bg}")` }}>
       <div className="result-dim" />
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">🎟️ レイドチケット × {tickets}</span></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Ticket.png'} className="gl-ico" fallback={<span>🎟️</span>} />レイドチケット × {tickets}</span></div>
       <div className="raid-body">
         <div className="raid-title">討伐戦 — ボス {boss}/{RAID_MAX_BOSS}</div>
         <div className="raid-boss">
@@ -1830,13 +2241,39 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
         </div>
         <div className="raid-boss-name">{bossDef.name}</div>
         <div className="raid-hpbar-frame">
-          <div className="raid-hpbar"><div className="raid-hpfill" style={{ width:hp+'%' }} /><span className="raid-hptext">ボスHP {hp}%</span></div>
+          <div className="raid-hpbar">
+            <div className="raid-hpfill" style={{ width:hp+'%' }} />
+            {RAID_MILESTONES.map(m => (
+              <div key={m} className={"raid-ms-tick" + (milestonesHit.includes(m) ? ' hit' : '')} style={{ left:m+'%' }} />
+            ))}
+            <span className="raid-hptext">ボスHP {hp}%</span>
+          </div>
+          <div className="raid-ms-chips">
+            {RAID_MILESTONES.map(m => {
+              const hit = milestonesHit.includes(m);
+              return (
+                <div key={m} className={"raid-ms-chip" + (hit ? ' hit' : '') + (msFx && msFx.hits.includes(m) ? ' pop' : '')}>
+                  <span className="msc-pct">HP{m}%</span>
+                  <span className="msc-amt"><Img src={IMG+'ui/Koban_Small.png'} className="msc-ico" fallback={<span>🪙</span>} />{fmt(raidMilestoneReward(boss, m))}</span>
+                  {hit && <span className="msc-check">✓</span>}
+                </div>
+              );
+            })}
+            <div className={"raid-ms-chip clear"
+              + (claimedThis ? ' hit claimed' : defeated ? ' hit ready' : '')
+              + ((defeatFx || claimBurst) ? ' pop' : '')}>
+              <span className="msc-pct">撃破</span>
+              <span className="msc-amt"><Img src={IMG+'ui/Koban_Small.png'} className="msc-ico" fallback={<span>🪙</span>} />{fmt(raidBossCoin(boss))}</span>
+              <span className="msc-amt"><Img src={IMG+'ui/Icon_Dice.png'} className="msc-ico" fallback={<span>🎲</span>} />{raidBossRolls(boss)}</span>
+              {claimedThis && <span className="msc-check">✓</span>}
+            </div>
+          </div>
         </div>
         <div className="raid-log">{log}</div>
 
         <div className="raid-party-bar">
           <div className="rpb-head">
-            <span>討伐編成・合計攻撃力 ⚔️{fmt(partyAP)}</span>
+            <span>討伐編成・合計攻撃力 <Img src={IMG+'dice/DiceFace_Attack.png'} className="gl-ico" fallback={<span>⚔️</span>} />{fmt(partyAP)}</span>
             <button className="raid-party-edit" onClick={onEditParty}>編成 ✎</button>
           </div>
           <div className="raid-party-slots">
@@ -1867,14 +2304,20 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
           ? <div className="raid-log" style={{ marginTop:8 }}>次のボスはステージ{boss+1}到達で出現します</div>
           : defeated
           ? <button className={"big-btn gold-btn" + (claimedThis ? ' disabled' : '')} disabled={claimedThis} onClick={claim}>
-              {claimedThis ? '受取済み' : `報酬を受け取る 💰${fmt(raidBossCoin(boss))}`}
+              {claimedThis ? '受取済み' : <>報酬を受け取る <Img src={IMG+'ui/Koban_Small.png'} className="rb-ico" fallback={<span>💰</span>} />{fmt(raidBossCoin(boss))}</>}
             </button>
-          : <button className={"big-btn red-btn" + (tickets>0 && raidParty.length ? '' : ' disabled')} onClick={attack}>攻撃する！ 🎟️×1</button>}
+          : <button className={"big-btn red-btn" + (tickets>0 && raidParty.length ? '' : ' disabled')} onClick={attack}>攻撃する！ <Img src={IMG+'ui/Icon_Ticket.png'} className="rb-ico" fallback={<span>🎟️</span>} />×1</button>}
         {!allDone && !awaitingUnlock && !defeated && tickets<=0 &&
-          <div className="raid-log" style={{ marginTop:8 }}>🎟️チケットはゾロ目小判で入手できます</div>}
+          <div className="raid-log" style={{ marginTop:8 }}><Img src={IMG+'ui/Icon_Ticket.png'} className="gl-ico" fallback={<span>🎟️</span>} />チケットはゾロ目小判で入手できます</div>}
         {!allDone && !awaitingUnlock && !defeated && tickets>0 && !raidParty.length &&
           <div className="raid-log" style={{ marginTop:8 }}>討伐編成を1体以上組もう</div>}
       </div>
+      {msFx && <RaidMsCelebrate hits={msFx.hits} amount={msFx.amount} onDone={()=>setMsFx(null)} />}
+      {defeatFx && <RaidDefeatCelebrate bossName={bossDef.name} onDone={()=>setDefeatFx(false)} />}
+      {claimBurst && <>
+        <CoinParticles count={30} onDone={()=>setClaimBurst(false)} />
+        <div className="raid-claim-pop"><Img src={IMG+'ui/Icon_Dice.png'} className="rcp-ico" fallback={<span>🎲</span>} />+{raidBossRolls(boss)}</div>
+      </>}
     </div>
   );
 }
@@ -1887,11 +2330,11 @@ function RaidPartyScreen({ ownedPieces, charLevels={}, party=[], onToggle, onBac
   const sumAP = party.reduce((s,id)=>s+attackPower(id, charLevels[id]||1), 0);
   return (
     <div className="screen sheet-screen">
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">🗡️ 討伐編成</span></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Clan.png'} className="gl-ico" fallback={<span>🗡️</span>} />討伐編成</span></div>
       <div className="char-equip-banner">
         <div className="ceb-info">
           <div className="ceb-label">編成 {party.length}/{RAID_PARTY_MAX}</div>
-          <div className="ceb-name">合計攻撃力 ⚔️{fmt(sumAP)}</div>
+          <div className="ceb-name">合計攻撃力 <Img src={IMG+'dice/DiceFace_Attack.png'} className="gl-ico" fallback={<span>⚔️</span>} />{fmt(sumAP)}</div>
         </div>
       </div>
       <div className="sheet-scroll">
@@ -1916,14 +2359,14 @@ function RaidPartyScreen({ ownedPieces, charLevels={}, party=[], onToggle, onBac
                       style={{ '--rk': meta.color }} onClick={()=>owned && onToggle(c.id)}>
                       <div className="char-card-face">
                         {locked
-                          ? <span className="char-lock">🔒</span>
+                          ? <Img src={IMG+'ui/Icon_Lock.png'} className="char-lock-img" fallback={<span className="char-lock">🔒</span>} />
                           : <Img src={charThumb(c.id)} className="char-card-img" fallback={<span style={{fontSize:38}}>🧙</span>} />}
                         <span className="char-rank-tag" style={{ background: meta.color }}>{meta.short}</span>
                         {selected && <span className="raid-pick-badge">{selIdx+1}</span>}
                       </div>
                       <div className="char-card-name">{locked ? '？？？' : c.name}</div>
                       {owned
-                        ? <div className="char-atk-badge">⚔️{attackPower(c.id, lv)}　Lv{lv}</div>
+                        ? <div className="char-atk-badge"><Img src={IMG+'dice/DiceFace_Attack.png'} className="gl-ico" fallback={<span>⚔️</span>} />{attackPower(c.id, lv)}　Lv{lv}</div>
                         : <div className="char-card-desc">未入手</div>}
                     </div>
                   );
@@ -1942,9 +2385,9 @@ function RaidPartyScreen({ ownedPieces, charLevels={}, party=[], onToggle, onBac
    ============================================================ */
 // 報酬は {kind, amt, text?} で保持（絵文字パースをやめ、アイコンは画像で表示）
 const SEASON_TIERS = [
-  { xp:0,  kind:'roll', amt:10 }, { xp:5, kind:'coin', amt:20000 }, { xp:12, kind:'shield', amt:1 },
-  { xp:20, kind:'roll', amt:30 }, { xp:30, kind:'coin', amt:80000 }, { xp:42, kind:'card', text:'カード' },
-  { xp:55, kind:'roll', amt:50 }, { xp:70, kind:'coin', amt:200000 }, { xp:88, kind:'cosmetic', text:'限定衣装' },
+  { xp:0,  kind:'roll', amt:30 }, { xp:5, kind:'coin', amt:20000 }, { xp:12, kind:'shield', amt:1 },
+  { xp:20, kind:'roll', amt:90 }, { xp:30, kind:'coin', amt:80000 }, { xp:42, kind:'card', text:'カード' },
+  { xp:55, kind:'roll', amt:150 }, { xp:70, kind:'coin', amt:200000 }, { xp:88, kind:'cosmetic', text:'限定衣装' },
 ];
 // 報酬アイコン（画像）と絵文字フォールバック
 const REWARD_ICON  = { roll:'ui/Icon_Dice.png', coin:'ui/Koban_Small.png', shield:'ui/Icon_Shield.png', card:'ui/Icon_Card.png', cosmetic:'ui/Icon_Crown.png' };
@@ -1992,7 +2435,7 @@ function SeasonScreen({ xp, claimed, onClaim, onBack }) {
                   <div className="st-reward"><RewardChip r={t} /></div>
                   <div className="st-req">{t.xp}XP</div>
                   <button className={"tier-btn " + (unlocked && !isClaimed ? 'ready':'')} disabled={!unlocked || isClaimed} onClick={()=>onClaim(i)}>
-                    {isClaimed ? '✓' : unlocked ? '受取' : '🔒'}
+                    {isClaimed ? '✓' : unlocked ? '受取' : <Img src={IMG+'ui/Icon_Lock.png'} className="tb-lock" fallback={<span>🔒</span>} />}
                   </button>
                 </div>
               );
@@ -2008,9 +2451,9 @@ function SeasonScreen({ xp, claimed, onClaim, onBack }) {
    INVITE — 招待マイルストン
    ============================================================ */
 const INVITE_MILES = [
-  { label:'友達がゲームを開始', reward:{ kind:'roll', amt:25 }, done:true },
+  { label:'友達がゲームを開始', reward:{ kind:'roll', amt:75 }, done:true },
   { label:'友達がステージ3到達', reward:{ kind:'coin', amt:100000 }, done:true },
-  { label:'友達が一族に加入', reward:{ kind:'roll', amt:50 }, done:false },
+  { label:'友達が一族に加入', reward:{ kind:'roll', amt:150 }, done:false },
   { label:'友達が初回購入', reward:{ kind:'cosmetic', text:'限定ペット' }, done:false },
 ];
 function InviteScreen({ onBack, showToast, grantRolls, addCoins }) {
@@ -2023,7 +2466,7 @@ function InviteScreen({ onBack, showToast, grantRolls, addCoins }) {
   };
   return (
     <div className="screen sheet-screen">
-      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label">👥 友達を招待</span></div>
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Invite.png'} className="gl-ico" fallback={<span>👥</span>} />友達を招待</span></div>
       <div className="invite-hero">
         <div className="invite-code">招待コード： <b>NINJA-7F3K</b></div>
         <button className="big-btn green-btn" onClick={()=>showToast('リンクをコピーしました')}>招待リンクをコピー</button>
@@ -2038,7 +2481,7 @@ function InviteScreen({ onBack, showToast, grantRolls, addCoins }) {
               <span className="im-reward"><RewardChip r={m.reward} /></span>
               <button className={"tier-btn " + (m.done && !isClaimed?'ready':'')} disabled={!m.done||isClaimed}
                 onClick={()=>claim(i, m.reward)}>
-                {isClaimed?'✓':m.done?'受取':'🔒'}
+                {isClaimed?'✓':m.done?'受取':<Img src={IMG+'ui/Icon_Lock.png'} className="tb-lock" fallback={<span>🔒</span>} />}
               </button>
             </div>
           );
@@ -2049,12 +2492,74 @@ function InviteScreen({ onBack, showToast, grantRolls, addCoins }) {
 }
 
 /* ============================================================
+   SETTINGS — サウンド・演出・表示設定
+   ============================================================ */
+const ROLLANIM_OPTS = [
+  { id:'3d',      label:'3D立体' },
+  { id:'toss',    label:'飛ばし' },
+  { id:'classic', label:'回転' },
+];
+function SettingsScreen({ onBack, seVol, setSeVol, bgmVol, setBgmVol, soundOn, onToggleSound, rollAnim, onSelectRollAnim, night, onToggleNight }) {
+  return (
+    <div className="screen sheet-screen">
+      <div className="mini-bar"><button className="ghost-btn" onClick={onBack}>← 戻る</button><span className="ghost-label"><Img src={IMG+'ui/Icon_Settings.png'} className="gl-ico" fallback={<span>⚙️</span>} />設定</span></div>
+      <div className="sheet-scroll">
+        <div className="settings-sec">
+          <div className="settings-sec-title">サウンド</div>
+          <div className="setting-row">
+            <span className="sr-label">サウンド ON / OFF</span>
+            <div className="set-seg" style={{ maxWidth:120 }}>
+              <button className={soundOn ? 'on' : ''} onClick={()=>{ if (!soundOn) onToggleSound(); }}>ON</button>
+              <button className={!soundOn ? 'on' : ''} onClick={()=>{ if (soundOn) onToggleSound(); }}>OFF</button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <span className="sr-label">SE音量</span>
+            <span className="sr-val">{seVol}%</span>
+          </div>
+          <input className="set-range" type="range" min="0" max="100" value={seVol}
+            style={{ '--fill': seVol + '%' }}
+            onChange={e => setSeVol(parseInt(e.target.value, 10))}
+            onMouseUp={()=>SFX.tap()} onTouchEnd={()=>SFX.tap()} />
+          <div className="setting-row" style={{ marginTop:14 }}>
+            <span className="sr-label">BGM音量</span>
+            <span className="sr-val">{bgmVol}%</span>
+          </div>
+          <input className="set-range" type="range" min="0" max="100" value={bgmVol}
+            style={{ '--fill': bgmVol + '%' }}
+            onChange={e => setBgmVol(parseInt(e.target.value, 10))} />
+          <div className="setting-note">※ BGM音源は近日追加予定です</div>
+        </div>
+        <div className="settings-sec">
+          <div className="settings-sec-title">表示</div>
+          <div className="setting-row">
+            <span className="sr-label">ダイス演出</span>
+          </div>
+          <div className="set-seg">
+            {ROLLANIM_OPTS.map(o => (
+              <button key={o.id} className={o.id===rollAnim ? 'on' : ''} onClick={()=>{ SFX.tap(); onSelectRollAnim(o.id); }}>{o.label}</button>
+            ))}
+          </div>
+          <div className="setting-row" style={{ marginTop:14 }}>
+            <span className="sr-label">昼 / 夜テーマ</span>
+            <div className="set-seg" style={{ maxWidth:120 }}>
+              <button className={!night ? 'on' : ''} onClick={()=>{ if (night) { SFX.tap(); onToggleNight(); } }}>☀️ 昼</button>
+              <button className={night ? 'on' : ''} onClick={()=>{ if (!night) { SFX.tap(); onToggleNight(); } }}>🌙 夜</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    SHOP — 課金ショップ（モック）
    ============================================================ */
 const SHOP_PACKS = [
-  { id:'s', title:'見習いパック', price:'¥120', coins:100000, rolls:20, tag:'' },
-  { id:'m', title:'忍者パック',   price:'¥610', coins:600000, rolls:120, tag:'人気' },
-  { id:'l', title:'大名パック',   price:'¥3,060', coins:3500000, rolls:700, tag:'お得' },
+  { id:'s', title:'見習いパック', price:'¥120', coins:100000, rolls:60, tag:'' },
+  { id:'m', title:'忍者パック',   price:'¥610', coins:600000, rolls:360, tag:'人気' },
+  { id:'l', title:'大名パック',   price:'¥3,060', coins:3500000, rolls:2100, tag:'お得' },
   { id:'vip', title:'VIP（月額）', price:'¥980', coins:0, rolls:0, tag:'広告除去+日替ボーナス' },
 ];
 function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPieces, onBuyPiece, kobanItems, onBuyKoban, charLevels={}, onBuyGacha }) {
@@ -2062,14 +2567,14 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
     <div className="screen sheet-screen">
       <div className="mini-bar">
         <button className="ghost-btn" onClick={onBack}>← 戻る</button>
-        <span className="ghost-label">🛒 Shinobi Mart</span>
+        <span className="ghost-label"><Img src={IMG+'ui/Icon_Shop.png'} className="gl-ico" fallback={<span>🛒</span>} />Shinobi Mart</span>
         <span className="shop-coins"><Img src={IMG+'ui/Koban_Small.png'} className="sc-koban" fallback={<span>🪙</span>} /> {fmt(coins)}</span>
       </div>
       <div className="sheet-scroll">
 
         {/* 仲間ガチャ */}
         <div className="shop-sec">
-          <div className="shop-sec-head"><span className="shop-sec-title">🎰 仲間ガチャ</span><span className="shop-sec-note">高いガチャほど強い仲間が出やすい</span></div>
+          <div className="shop-sec-head"><span className="shop-sec-title"><Img src={IMG+'ui/TreasureBox_Closed.png'} className="gl-ico" fallback={<span>🎰</span>} />仲間ガチャ</span><span className="shop-sec-note">高いガチャほど強い仲間が出やすい</span></div>
           <div className="gacha-list">
             {GACHA_TIERS.map(tier => {
               const poor = coins < tier.price;
@@ -2087,7 +2592,7 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
 
         {/* 日替りピース商店 */}
         <div className="shop-sec">
-          <div className="shop-sec-head"><span className="shop-sec-title">🧩 日替りピース</span><span className="shop-sec-note">毎日入れ替わり・各1回</span></div>
+          <div className="shop-sec-head"><span className="shop-sec-title"><Img src={IMG+'ui/Icon_Piece.png'} className="gl-ico" fallback={<span>🧩</span>} />日替りピース</span><span className="shop-sec-note">毎日入れ替わり・各1回</span></div>
           <div className="piece-grid">
             {shopOffers.map(id => {
               const ch = CHAR_BY_ID[id]; if (!ch) return null;
@@ -2120,14 +2625,14 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
 
         {/* こばんショップ（消耗品・日替り各1回） */}
         <div className="shop-sec">
-          <div className="shop-sec-head"><span className="shop-sec-title">🪙 こばんショップ</span><span className="shop-sec-note">各1回／日</span></div>
+          <div className="shop-sec-head"><span className="shop-sec-title"><Img src={IMG+'ui/Koban_Small.png'} className="gl-ico" fallback={<span>🪙</span>} />こばんショップ</span><span className="shop-sec-note">各1回／日</span></div>
           <div className="koban-grid">
             {kobanItems.map(it => {
               const poor = coins < it.coins;
               const bought = shopBought.includes(it.id);
               return (
                 <div key={it.id} className={"koban-item " + (bought?'bought':'')}>
-                  <div className="ki-label">{it.sub} {it.label}</div>
+                  <div className="ki-label"><Img src={IMG+it.subImg} className="gl-ico" fallback={<span>{it.sub}</span>} />{it.label}</div>
                   <button className={"po-buy " + (bought?'disabled':(poor?'poor':'buy'))} disabled={bought} onClick={()=>onBuyKoban(it)}>
                     {bought ? '購入済み' : <><Img src={IMG+'ui/Koban_Small.png'} className="po-koban" fallback={<span>🪙</span>} />{fmt(it.coins)}</>}
                   </button>
@@ -2146,9 +2651,9 @@ function ShopScreen({ onBack, onBuyPack, coins, shopOffers, shopBought, ownedPie
                 {p.tag && <span className="pack-tag">{p.tag}</span>}
                 <div className="pack-title">{p.title}</div>
                 <div className="pack-contents">
-                  {p.coins>0 && <div>🪙 {fmt(p.coins)}</div>}
-                  {p.rolls>0 && <div>🎲 {p.rolls}</div>}
-                  {p.id==='vip' && <div>👑 特典</div>}
+                  {p.coins>0 && <div><Img src={IMG+'ui/Koban_Small.png'} className="gl-ico" fallback={<span>🪙</span>} />{fmt(p.coins)}</div>}
+                  {p.rolls>0 && <div><Img src={IMG+'ui/Icon_Dice.png'} className="gl-ico" fallback={<span>🎲</span>} />{p.rolls}</div>}
+                  {p.id==='vip' && <div><Img src={IMG+'ui/Icon_Crown.png'} className="gl-ico" fallback={<span>👑</span>} />特典</div>}
                 </div>
                 <button className="big-btn small gold-btn" onClick={()=>onBuyPack(p)}>{p.price}</button>
               </div>
@@ -2217,15 +2722,19 @@ function JackpotTile({ item, win }) {
   );
 }
 
-function MultiplierOverlay({ base, result, summon=null, boxReward=null, pool, betMult=1, onDone }) {
+function MultiplierOverlay({ base, coinAdd=0, result, summon=null, boxReward=null, pool, comboK=1, combo=false, kMult=1, cap=Infinity, k=null, onDone }) {
   // ジャックポットは6種の報酬から抽選。当選(result)は確定済み。
   // どの報酬が並ぶか見えるよう「縦スロットリール」で高速回転→減速→当選タイルを中央の当たりラインに停止。
+  // 黄金律（コイン×ジャックポットの合体）の場合、抽選前に coinAdd（小判ぞろ目相当の上乗せ）が乗り、
+  // さらに合体ボーナス comboK（既定1.15）が全体に掛かる。
   const items = (pool && pool.length) ? pool : [result];
   const TILE = 88;
   const SPINS = 6;
   const landIdx = Math.max(0, items.indexOf(result));
   const mult = result.coinMultiplier;
-  const total = (base * mult + (result.treasure ? 50000 : 0)) * betMult;
+  // Math.round：Math.floorだと合体倍率(comboK=1.15)適用時に浮動小数の丸め誤差で1コイン目減りすることがある
+  const raw = Math.round(((base + coinAdd) * mult + (result.treasure ? 50000 : 0)) * comboK * kMult);
+  const total = Math.min(raw, cap);
 
   // リールの牌列：0..winIdx が回転区間、末尾に上下ぶんを足す。3枚窓の中央(上から2枚目)に当選を置く。
   const winIdx = SPINS * items.length + landIdx;
@@ -2277,8 +2786,12 @@ function MultiplierOverlay({ base, result, summon=null, boxReward=null, pool, be
 
         {phase==='total' && <>
           <div className="mult-base"><Img src={IMG+'ui/Koban_Small.png'} className="mb-ico" fallback={<span>🪙</span>} /> {fmt(base)}</div>
-          <div className="mult-x">× {mult}{betMult>1?` × ${betMult}`:''}{result.treasure?' ＋🎁':''}</div>
+          {combo && <div className="mult-coinadd">🪙 小判上乗せ +{fmt(coinAdd)}</div>}
+          <div className="mult-x">× {mult}{result.treasure?' ＋🎁':''}</div>
+          {combo && <div className="mult-combo-badge">合体 ×{COMBO_K}</div>}
+          {kMult>1 && <div className="mult-combo-badge">× {kMult}{k?`（成立${k}面）`:''}</div>}
           <div className="mult-total gold-text">= +{fmt(disp)} 🪙</div>
+          {raw>cap && <div className="mult-cap-note">上限到達</div>}
           {summon && <div className={"jp-summon " + summon.char.rank}>
             <Img src={charThumb(summon.char.id)} className="jp-summon-ico" fallback={<span style={{fontSize:30}}>🥷</span>} />
             <span className="jp-summon-txt">仲間召喚！ <b>{summon.char.name}</b><br/>かけら +{summon.amount}</span>
@@ -2303,7 +2816,7 @@ function MultiplierOverlay({ base, result, summon=null, boxReward=null, pool, be
 /* ============================================================
    SHIELD OVERLAY — シールドぞろ目の獲得演出（青・盾スラム＋ピル充填）
    ============================================================ */
-function ShieldOverlay({ onDone }) {
+function ShieldOverlay({ k=3, excessCoin=0, onDone }) {
   const [phase, setPhase] = useState('in'); // in → fill
   useEffect(() => {
     SFX.shield();
@@ -2323,7 +2836,9 @@ function ShieldOverlay({ onDone }) {
           {[0,1,2].map(i => <i key={i} className={phase==='fill'?'on':''} style={{ transitionDelay:(i*170)+'ms' }} />)}
         </div>
         <div className="shield-sub">🛡️ 次の攻撃を防ぐ</div>
+        {excessCoin>0 && <div className="shield-excess">🛡️満タン＋超過{k-3}枚を +{fmt(excessCoin)}🪙 に変換！</div>}
       </div>
+      {excessCoin>0 && <CoinParticles key="shieldexcess" count={16} />}
     </div>
   );
 }
@@ -2360,7 +2875,7 @@ function GachaOverlay({ tier, char, amount, rank, onDone }) {
           </div>
           <div className="gacha-char-name">{char.name}</div>
           <div className="gacha-rank-tag">{meta.label}</div>
-          <div className="gacha-amt">🧩 かけら +{amount}</div>
+          <div className="gacha-amt"><Img src={IMG+'ui/Icon_Piece.png'} className="gl-ico" fallback={<span>🧩</span>} />かけら +{amount}</div>
           <div className="gacha-tap-hint">タップして閉じる</div>
         </div>}
     </div>
@@ -2396,8 +2911,8 @@ function App() {
   useEffect(() => {
     lsSet('ndm_village', { stage, levels: Object.fromEntries(castleVillage.map(it => [it.id, it.level])) });
   }, [castleVillage, stage]);
-  const [rolls, setRolls] = useState(50);
-  const [rollsMax] = useState(50);
+  const [rolls, setRolls] = useState(150);
+  const [rollsMax] = useState(150);
   const [opponent, setOpponent] = useState(() => {
     const o = makeOpponent(OPP_BY_KEY[new URLSearchParams(window.location.search).get('opp')] || OPP_BY_KEY.tanaka);
     const qsp = new URLSearchParams(window.location.search);
@@ -2405,7 +2920,7 @@ function App() {
     return o;
   });
 
-  // ?screen=bonus|attackSelect|attackResult|steal|castle — jump straight to a screen (dev/preview)
+  // ?screen=bonus|attackSelect|attackResult|steal|castle|assault — jump straight to a screen (dev/preview)
   const qp = new URLSearchParams(window.location.search);
   const initScreen = qp.get('screen') || 'main';
   const initFlow = {
@@ -2413,6 +2928,10 @@ function App() {
     attackSelect: { bonusResult: BONUS_DICE_TABLES.attack[5] },
     attackResult: { attackResult: { success:true, coinGain:75000, partLabel:'武家屋敷' } },
     steal:        { stealMultiplier:2 },
+    assault:      (() => {
+      const attackFace = BONUS_DICE_TABLES.attack[5];  // coinRate 0.15 / damage 2
+      return { attackFace, aFull: 60000, opponentShields: 1 };
+    })(),
   }[initScreen] || {};
 
   const [screen, setScreen] = useState(initScreen);
@@ -2422,7 +2941,8 @@ function App() {
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
   const [gachaFx, setGachaFx] = useState(null);    // {tier, char, amount, rank} 仲間ガチャ演出中
   const [toast, setToast] = useState('');
-  const [night, setNight] = useState(qp.has('night'));
+  const [night, setNight] = useState(() => lsGet('ndm_night', qp.has('night')));
+  useEffect(()=>{ lsSet('ndm_night', night); }, [night]);
   // collection / season / cards
   const [ownedCards, setOwnedCards] = useState({});   // {cardId: count}
   const ownedRef = useRef({});                        // 所持カードの同期ミラー（カードドロップの即時判定用）
@@ -2464,8 +2984,9 @@ function App() {
     return (s && Number.isInteger(s.boss)) ? { ...RAID_DEFAULT, ...s } : RAID_DEFAULT;
   });
   useEffect(()=>{ lsSet('ndm_raid', raid); }, [raid]);
-  const [bet, setBet] = useState(1);                  // ロールポイント倍率（1〜3）：消費ロール＆報酬に同倍率
-  const betRef = useRef(1); betRef.current = bet;      // フロー中の報酬計算で参照（stale closure回避）
+  const [diceCount, setDiceCount] = useState(DICE_MIN);   // 積むダイス数（3/4/5）：消費ロールはダイス数ぶん（3/4/5）
+  const diceCountRef = useRef(diceCount); diceCountRef.current = diceCount;   // フロー中の参照用（stale closure回避）
+  const rollCost = DICE_COST[diceCount];
   const [auto, setAuto] = useState(qp.has('auto'));   // オートロール（App 側で保持：画面遷移で MainRoll が再マウントされても維持）
   // ダイスのロール演出スタイル：'3d'（立体・既定）/ 'toss'（下から飛ばす）/ 'classic'（回転）。いつでも切替可（localStorage保持）
   const [rollAnim, setRollAnim] = useState(() => {
@@ -2477,6 +2998,17 @@ function App() {
     try { localStorage.setItem('ndm_rollanim', nx); } catch(e){}
     return nx;
   }), []);
+  const selectRollAnim = useCallback((nx) => {
+    setRollAnim(nx);
+    try { localStorage.setItem('ndm_rollanim', nx); } catch(e){}
+  }, []);
+  // 設定画面：音量・サウンドON/OFF。SFX モジュールの値を初期値として同期
+  const [seVol, setSeVol] = useState(() => SFX.getVolume());
+  useEffect(()=>{ lsSet('ndm_se_vol', seVol); SFX.setVolume(seVol); }, [seVol]);
+  const [bgmVol, setBgmVol] = useState(() => lsGet('ndm_bgm_vol', 60));
+  useEffect(()=>{ lsSet('ndm_bgm_vol', bgmVol); SFX.setBgmVolume(bgmVol/100); }, [bgmVol]);
+  const [soundOn, setSoundOn] = useState(() => SFX.isEnabled());
+  const toggleSound = useCallback(() => setSoundOn(v => { const nx = !v; SFX.setEnabled(nx); return nx; }), []);
 
   const coinsRef = useRef(coins);
   useEffect(()=>{ coinsRef.current = coins; }, [coins]);
@@ -2700,7 +3232,7 @@ function App() {
     if (claimedTiers.includes(i)) return;
     setClaimedTiers(c => [...c, i]);
     const r = SEASON_TIERS[i];
-    if (r.kind==='roll') grantRolls(r.amt||10);
+    if (r.kind==='roll') grantRolls(r.amt||30);
     else if (r.kind==='coin') addCoins(r.amt||0);
     else if (r.kind==='shield') grantShields(r.amt||1);
     showToast('シーズン報酬を受け取りました！');
@@ -2711,29 +3243,33 @@ function App() {
     showToast(`${p.title} を付与しました`);
   }, [addCoins, grantRolls, showToast]);
 
-  const game = { coins, shields, stage, rolls, rollsMax, opponent, useRolls, bet };
+  const game = { coins, shields, stage, rolls, rollsMax, opponent, useRolls, diceCount, rollCost };
 
   // ---- flow handlers ----
-  const onZorume = useCallback((faceId) => {
-    if (faceId === 'shield') { setShieldFx(true); return; }   // 専用の獲得演出（付与は演出完了時）
-    setZorumeFace(faceId); // shows overlay; onComplete routes to bonus
+  // faceId, k（成立面数=ダイス数。ぞろ目役の効果はkでスケールする。合体役=assault/goldruleは非対象）
+  const onZorume = useCallback((faceId, k) => {
+    if (faceId === 'shield') {
+      setShieldFx({ k, excessCoin: shieldExcessCoin(stageRef.current, k) });   // 専用の獲得演出（付与は演出完了時）
+      return;
+    }
+    setZorumeFace({ faceId, k }); // shows overlay; onComplete routes to bonus
   }, []);
 
   const onZorumeComplete = useCallback(() => {
-    const f = zorumeFace; setZorumeFace(null);
+    const { faceId:f, k } = zorumeFace; setZorumeFace(null);
     if (f === 'coin') {
-      go('bonus', { trigger:'coin' });                          // 小判ゾロ目のみボーナスルーレット
+      go('bonus', { trigger:'coin', k });                          // 小判ゾロ目のみボーナスルーレット
     } else if (f === 'attack') {
-      go('attackSelect', { bonusResult: rollBonusDice('attack') });   // Attackはミニゲーム直行
+      go('attackSelect', { bonusResult: rollBonusDice('attack'), k });   // Attackはミニゲーム直行
     } else if (f === 'steal') {
-      go('steal', {});   // Stealはミニゲーム直行
+      go('steal', { k });   // Stealはミニゲーム直行
     } else if (f === 'jackpot') {
       const res = rollBonusDice('jackpot');   // Jackpotは報酬スロット演出（どの報酬かを見せる）
       const summon = res.companion ? rollCompanionSummon() : null;   // 仲間召喚：どの仲間のかけらを何枚もらえるか事前確定
       // 宝箱面（お宝箱/大当たり/レア確定）は箱の中身（カード or 仲間のかけら）も必ず付与。以前はコインに畳み込むだけで「何も出ない」ように見えていた。
       // レア確定はGOLDカード率を高める。超JPは仲間召喚が主報酬なので箱は付けない。
       const boxReward = (res.treasure && !res.companion) ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
-      setMultFx({ base: coinBaseForStage(stage), result: res, summon, boxReward });
+      setMultFx({ base: coinBaseForStage(stage), result: res, summon, boxReward, kMult: JACKPOT_KMULT[k] || 1, cap: jackpotCap(stage), k });
     } else { go('main'); }
   }, [zorumeFace, go, stage]);
 
@@ -2741,13 +3277,13 @@ function App() {
     const trigger = flow.trigger;
     const base = coinBaseForStage(stage);
     if (trigger === 'coin') {
-      const gain = Math.round(base * result.multiplier * betRef.current * effRef.current.coinMult); addCoins(gain);
+      const gain = Math.round(base * result.multiplier * effRef.current.coinMult); addCoins(gain);
       // 獲得額の「式」はボーナス画面で表示済み。ここではチケット入手のみ通知。
       if (Math.random() < 0.4) { grantTickets(1); showToast('レイドチケット🎟️入手！'); }
       go('main');
     } else if (trigger === 'jackpot') {
       const jm = effRef.current.coinMult * (1 + effRef.current.jackpotBonus);   // 龍神など
-      const gain = Math.round((base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * betRef.current * jm); addCoins(gain);
+      const gain = Math.round((base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * jm); addCoins(gain);
       showToast(`${result.label}！ +${fmt(gain)} 🪙${result.treasure?' 💎':''}`); go('main');
       // ジャックポットはキャラのピースも多めに付与（宝/仲間面はさらに1口）
       const draws = 1 + ((result.treasure || result.companion) ? 1 : 0);
@@ -2760,17 +3296,20 @@ function App() {
   // AttackSelect が建物ごとに演出（コイン噴出/破壊 or シールド防御）を終えてから成否を渡してくる。
   const onAttackResolve = useCallback((part, success) => {
     const br = flow.bonusResult;
-    const damage = br?.damage || 1;                 // 破壊する棟数（ボーナスダイス由来）
+    const k = flow.k;
+    const damage = ATTACK_DESTROY_BY_K[k] || (br?.damage || 1);   // 破壊した棟数＝k−2（ぞろ目由来。通常役はボーナスダイスの棟数のまま）
     const rate   = br?.coinRate || 0.25;            // 成功時の獲得率（ボーナスダイス由来）
-    const b = betRef.current;
     const e = effRef.current;                        // 装備キャラ効果
     if (!success) {
       setOpponent(o => ({ ...o, shields: Math.max(0, o.shields - 1) }));   // シールドが1枚防ぐ
-      go('attackResult', { attackResult: { success:false, coinGain: Math.floor(opponent.coins*0.07*e.attackMult)*b, partLabel: part.label, damage } });
+      go('attackResult', { attackResult: { success:false, coinGain: Math.floor(opponent.coins*0.07*e.attackMult), partLabel: part.label, damage } });
     } else {
-      go('attackResult', { attackResult: { success:true, coinGain: Math.floor(opponent.coins*rate*e.attackMult)*b, partLabel: part.label, damage, rate } });
+      const kMul = ATTACK_COIN_KMULT[k] || 1;
+      const capped = Math.floor(opponent.coins * ATTACK_COIN_CAP_FRAC);
+      const coinGain = Math.min(Math.floor(opponent.coins * rate * e.attackMult * kMul), capped);
+      go('attackResult', { attackResult: { success:true, coinGain, partLabel: part.label, damage, rate } });
     }
-  }, [flow.bonusResult, opponent, go]);
+  }, [flow.bonusResult, flow.k, opponent, go]);
 
   // 対戦が片付くたびに次の対戦相手へ入れ替える（大金持ち〜初心者からランダム）
   const rotateOpponent = useCallback(() => setOpponent(o => pickOpponent(o.key)), []);
@@ -2782,17 +3321,57 @@ function App() {
     if (rewards && rewards.length) setTimeout(()=>grantStealRewards(rewards), 300);
   }, [addCoins, showToast, go, rotateOpponent, grantStealRewards]);
 
+  // ---- 合体役：強襲（attack×steal）／黄金律（coin×jackpot） ----
+  // 強襲は「積んで狙う合体役」でロールが直接的中した時のみ発生する専用ミニゲーム。
+  // 3タップ選択制：入場時に確定するのはattackFace/aFull/シールド枚数のスナップショットのみ。
+  // 各棟の略奪額はタップ時にAssaultScreen内でstealFromBuilding()を引く（stealと同一タイミング）。
+  const onAssault = useCallback(() => {
+    const e = effRef.current;                        // 装備キャラ効果（onAttackResolve等と同じくeffRefを参照。staleクロージャ回避）
+    const attackFace = rollBonusDice('attack');
+    const aFull = Math.floor(opponent.coins * attackFace.coinRate * e.attackMult);
+    go('assault', { attackFace, aFull, opponentShields: opponent.shields });
+  }, [opponent, go]);
+
+  const onAssaultDone = useCallback((total, meta = {}) => {
+    const consumed = meta.shieldsConsumed || 0;
+    if (total > 0) {
+      addCoins(total);
+      showToast(consumed > 0
+        ? `強襲！ 🛡️${consumed}枚に防がれつつ +${fmt(total)} 🪙`
+        : `強襲成功！ +${fmt(total)} 🪙`);
+    }
+    if (consumed > 0) setOpponent(o => ({ ...o, shields: Math.max(0, o.shields - consumed) }));
+    rotateOpponent();   // クローズ時に1回のみ（逃げるも含む）
+    go('main');
+  }, [addCoins, showToast, rotateOpponent, go]);
+
+  // 黄金律：ジャックポット報酬スロット（MultiplierOverlay）に合流。coinBaseForStageの小判上乗せ＋合体×1.15を追加。
+  const onCombo = useCallback((comboId) => {
+    if (comboId === 'assault') { onAssault(); return; }
+    if (comboId === 'goldrule') {
+      const res = rollBonusDice('jackpot');
+      const summon = res.companion ? rollCompanionSummon() : null;
+      const boxReward = (res.treasure && !res.companion) ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
+      const coinAdd = Math.round(coinBaseForStage(stage) * GOLDRULE_COIN_ADD);
+      setMultFx({ base: coinBaseForStage(stage), coinAdd, comboK: COMBO_K, combo:true, result: res, summon, boxReward });
+    }
+  }, [onAssault, stage, ownedCharPieces]);
+
   return (
     <div className="app">
-      {screen==='main' && <MainRoll game={game} addCoins={addCoins} grantShields={grantShields} grantRolls={grantRolls} showToast={showToast} go={go} onZorume={onZorume} onCardDrop={onCardDrop} dropCard={dropCardSilent} onShop={()=>go('shop')} tickets={tickets} bet={bet} setBet={setBet} night={night} onToggleNight={()=>setNight(n=>!n)} auto={auto} setAuto={setAuto} rollAnim={rollAnim} onToggleRollAnim={toggleRollAnim}
+      {screen==='main' && <MainRoll game={game} addCoins={addCoins} grantShields={grantShields} grantRolls={grantRolls} showToast={showToast} go={go} onZorume={onZorume} onCombo={onCombo} onCardDrop={onCardDrop} dropCard={dropCardSilent} onShop={()=>go('shop')} tickets={tickets} diceCount={diceCount} setDiceCount={setDiceCount} night={night} onToggleNight={()=>setNight(n=>!n)} auto={auto} setAuto={setAuto} rollAnim={rollAnim} onToggleRollAnim={toggleRollAnim}
         paused={!!multFx || shieldFx || !!zorumeFace} equipped={equippedChar}
         freeRollChance={eff.freeRollChance} cardDropBonus={eff.cardDropBonus}
         onResetShop={debugResetShop} onRerollShop={debugRerollShop}
         onDebugTickets={()=>{ grantTickets(5); showToast('🎟️ チケット +5（デバッグ）'); }} />}
-      {screen==='bonus' && <BonusRoll trigger={flow.trigger} stage={stage} bet={bet} onComplete={onBonusComplete} />}
-      {screen==='attackSelect' && <AttackSelect opponent={opponent} bonusResult={flow.bonusResult} stage={stage} ignoreShield={eff.ignoreShield} onCancel={()=>go('main')} onResolve={onAttackResolve} />}
+      {screen==='bonus' && <BonusRoll trigger={flow.trigger} stage={stage} k={flow.k || 3} onComplete={onBonusComplete} />}
+      {screen==='attackSelect' && <AttackSelect opponent={opponent} bonusResult={flow.bonusResult} stage={stage} k={flow.k || 3} ignoreShield={eff.ignoreShield} onResolve={onAttackResolve} />}
       {screen==='attackResult' && <AttackResult result={flow.attackResult} onNext={onAttackNext} opponentName={opponent.name} />}
-      {screen==='steal' && <StealScreen opponentName={opponent.name} opponentCoins={opponent.coins} opponentImg={opponent.img} betMult={bet} onReceive={onStealReceive} stealMult={eff.stealMult} autoLastSpot={eff.stealLastSpot} stage={stage} pieceBonus={eff.pieceBonus} ownedPieces={ownedCharPieces} />}
+      {screen==='steal' && <StealScreen opponentName={opponent.name} opponentCoins={opponent.coins} opponentImg={opponent.img} onReceive={onStealReceive} stealMult={eff.stealMult} autoLastSpot={eff.stealLastSpot} stage={stage} k={flow.k || 3} pieceBonus={eff.pieceBonus} ownedPieces={ownedCharPieces} />}
+      {screen==='assault' && <AssaultScreen opponentName={opponent.name} opponentCoins={opponent.coins} opponentImg={opponent.img}
+        stealMult={eff.stealMult} ignoreShield={eff.ignoreShield} stage={stage}
+        attackFace={flow.attackFace} aFull={flow.aFull} opponentShields={flow.opponentShields}
+        onReceive={onAssaultDone} />}
       {screen==='castle' && <CastleScreen game={game} spendCoins={spendCoins} grantRolls={grantRolls} showToast={showToast} onBack={()=>go('main')} onNextStage={nextStage} village={castleVillage} setVillage={setCastleVillage} buildDiscount={eff.buildDiscount} headStart={eff.headStartLevels} />}
       {screen==='collection' && <CollectionScreen owned={ownedCards} claimed={claimedSets} onClaim={claimSet} onBack={()=>go('main')} showToast={showToast} />}
       {screen==='characters' && <CharactersScreen ownedPieces={ownedCharPieces} equipped={equippedChar} onEquip={equipChar} onBack={()=>go('main')} stage={stage} charLevels={charLevels} onLevelUp={levelUpChar} />}
@@ -2800,6 +3379,7 @@ function App() {
       {screen==='raidParty' && <RaidPartyScreen ownedPieces={ownedCharPieces} charLevels={charLevels} party={raidParty} onToggle={toggleRaidParty} onBack={()=>go('clan')} stage={stage} />}
       {screen==='season' && <SeasonScreen xp={seasonXP} claimed={claimedTiers} onClaim={claimTier} onBack={()=>go('main')} />}
       {screen==='invite' && <InviteScreen onBack={()=>go('main')} showToast={showToast} grantRolls={grantRolls} addCoins={addCoins} />}
+      {screen==='settings' && <SettingsScreen onBack={()=>go('main')} seVol={seVol} setSeVol={setSeVol} bgmVol={bgmVol} setBgmVol={setBgmVol} soundOn={soundOn} onToggleSound={toggleSound} rollAnim={rollAnim} onSelectRollAnim={selectRollAnim} night={night} onToggleNight={()=>setNight(n=>!n)} />}
       {screen==='shop' && <ShopScreen onBack={()=>go('main')} onBuyPack={buyPack} coins={coins}
         shopOffers={charShop.offers} shopBought={charShop.bought} ownedPieces={ownedCharPieces}
         onBuyPiece={buyCharPieces} kobanItems={KOBAN_SHOP} onBuyKoban={buyKoban} charLevels={charLevels} onBuyGacha={buyGacha} />}
@@ -2825,12 +3405,14 @@ function App() {
           </div>
         </div>}
 
-      {zorumeFace && <ZorumeOverlay faceId={zorumeFace} onComplete={onZorumeComplete} />}
-      {multFx && <MultiplierOverlay base={multFx.base} result={multFx.result} summon={multFx.summon} boxReward={multFx.boxReward} pool={BONUS_DICE_TABLES.jackpot} betMult={bet}
-        onDone={(total)=>{ const summon = multFx.summon; const boxReward = multFx.boxReward; setMultFx(null); const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus)); addCoins(g); showToast(`ジャックポット！ +${fmt(g)} 🪙`);
+      {zorumeFace && <ZorumeOverlay faceId={zorumeFace.faceId} onComplete={onZorumeComplete} />}
+      {multFx && <MultiplierOverlay base={multFx.base} coinAdd={multFx.coinAdd||0} comboK={multFx.comboK||1} combo={!!multFx.combo} result={multFx.result} summon={multFx.summon} boxReward={multFx.boxReward} pool={BONUS_DICE_TABLES.jackpot}
+        kMult={multFx.kMult||1} cap={multFx.cap ?? Infinity} k={multFx.k}
+        onDone={(total)=>{ const summon = multFx.summon; const boxReward = multFx.boxReward; const combo = multFx.combo; setMultFx(null); const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus)); addCoins(g); showToast(`${combo?'黄金律！':'ジャックポット！'} +${fmt(g)} 🪙`);
           if (summon) setTimeout(()=>{ addPiecesTo(summon.char.id, summon.amount); showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}`); }, 450);
           if (boxReward) setTimeout(()=>{ grantStealRewards([boxReward]); showToast(boxReward.type==='card' ? `🎁 宝箱：${boxReward.card.gold?'★GOLD ':''}カード獲得！` : `🎁 宝箱：${boxReward.char.name}のかけら +${boxReward.amount}`); }, 700); }} />}
-      {shieldFx && <ShieldOverlay onDone={()=>{ setShieldFx(false); grantShields(3); }} />}
+      {shieldFx && <ShieldOverlay k={shieldFx.k} excessCoin={shieldFx.excessCoin||0}
+        onDone={()=>{ const exc = shieldFx.excessCoin||0; setShieldFx(false); grantShields(3); if (exc>0) addCoins(exc); }} />}
       {gachaFx && <GachaOverlay tier={gachaFx.tier} char={gachaFx.char} amount={gachaFx.amount} rank={gachaFx.rank}
         onDone={()=>{ addPiecesTo(gachaFx.char.id, gachaFx.amount); setGachaFx(null); }} />}
       <Toast msg={toast} />

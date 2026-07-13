@@ -178,34 +178,67 @@
       flex: 1;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      gap: 34px;   /* 台座がダイス下に約42pxはみ出すため、獲得バナーが台座前面に被らない間隔を確保 */
+      gap: 34px;   /* 台座がダイス下に約66pxはみ出すため、獲得バナーが台座前面に被らない間隔を確保 */
       min-height: 0;
       padding-bottom: 6px;
     }
-    .dice-stage { position: relative; display: grid; place-items: center; }
+    /* width:100% は必須：.dice-area の align-items:center により .dice-stage は本来 shrink-to-fit になるが、
+       それだと子 .dice-row の max-width:calc(100% - 140px) が「自分の内容で決まる幅」を参照する循環になり、
+       Chromeの実測では290px→150pxまで縮んで3個ですら1個/行に折り返す回帰を引き起こす（flex-wrap追加で顕在化）。
+       .dice-stage に確定幅（dice-areaの全幅＝画面幅相当）を与えることでこの循環を断ち切る。
+       --d3-base（3個時のダイス基準サイズ。.dice-row.d3 と共有）をここで定義し、min-height に適用することで、
+       4/5個時にダイスを縮小（.dice-row.d3.n4/.n5）してもこの箱の高さ自体は3個時のまま変わらないようにする。
+       これをしないと .dice-stage は子要素の高さに追従してshrinkし（グリッドのauto行）、
+       ::before（台座）は bottom:-42px という「この箱の下端からのオフセット」で置いているため、
+       箱が縮む＝台座ごと画面上方へせり上がってダイスの下に隠れてしまう（5個時に台座に載って見えない不具合の原因）。
+       箱の高さを個数に依らず固定することで、台座とダイスの相対位置を常に一定に保つ。 */
+    .dice-stage {
+      position: relative; display: grid; place-items: center; width: 100%;
+      --d3-base: clamp(44px, calc((100vw - 152px) / 3), 90px);
+      min-height: var(--d3-base);
+    }
     /* 余白を上に集約しダイスを画面下寄りに配置することでダイスを主役化する（B案の核）。
        .dice-stage::before の3Dレンダー調の木製台座（UI_DicePodium.png）にダイスが載って見えるよう、
-       ダイス下端に重ねて配置し、演出（spinning/landed 等）より背後に描画する。 */
+       ダイス下端に重ねて配置し、演出（spinning/landed 等）より背後に描画する。
+       サイズ・位置は常に3個時の箱サイズ（--d3-base由来のmin-height）基準で固定（ダイス数で変えない）。 */
     .dice-stage::before {
       content: ''; position: absolute; z-index: 0;
       width: calc(100% + 48px); aspect-ratio: 1536 / 512;
-      left: 50%; bottom: -42px; transform: translateX(-50%);
+      left: 50%; bottom: -66px; transform: translateX(-50%);
       background: url("assets/images/ui/UI_DicePodium.png") center/100% 100% no-repeat;
       filter: drop-shadow(0 10px 12px rgba(0,0,0,.45));
       pointer-events: none;
     }
+    /* デバッグパネル「台座 ON/OFF」トグル用：OFF時に木製台座（UI_DicePodium.png）を非表示にする。 */
+    .dice-stage.no-podium::before { display: none; }
     /* max-width keeps the row clear of the absolutely-positioned .side-rail (46px wide + 5px offset each side, inner edge 51px).
-       2D演出時の .die は flex-basis で縮小、既定の3D立体ダイスは .dice-row.d3 の --d3（clamp）で縮小し、
-       どちらのモードでも狭い画面でサイドレールと重ならないようにする。 */
-    .dice-row { position: relative; z-index: 1; display: flex; gap: 18px; align-items: center; justify-content: center; max-width: calc(100% - 140px); }
+       積むダイス数（3/4/5・「積んで狙う合体役」）：折り返さず常に1列（display:flex, nowrap）。
+       個数が増えるほどダイス自体を縮小して1列に収める（2段レイアウトは撤回。個別の理由はREADME参照）。 */
+    .dice-row { position: relative; z-index: 1; display: flex; flex-wrap: nowrap;
+      justify-content: center; align-content: center; align-items: center;
+      gap: 12px 14px; margin: 0 auto; max-width: calc(100% - 140px); }
     .die {
       position: relative;
-      flex: 0 1 124px;
-      width: 124px; aspect-ratio: 1 / 1; height: auto;
+      flex: 0 0 auto;
+      width: 86px; aspect-ratio: 1 / 1; height: auto;
       display: grid; place-items: center;
       filter: drop-shadow(0 8px 10px rgba(0,0,0,.55));
       transform-origin: center;
     }
+    /* 2D（toss）ダイスは奥行きがないフラットな絵柄のため、3Dのような前後の千鳥は不自然（単なる上下のガタつきに見える）。
+       よって2Dは千鳥を付けず、個数に応じてダイスサイズのみ縮小して1列に収める（3D側は下の.d3系で千鳥を継続）。
+       3Dの --d3-base と同じ考え方でvw基準のclampにし、狭い画面（~375px以下）でもレールと衝突しないようにする
+       （固定pxのままだと.dieがflex:0 0 autoで縮まずレール側へ食み出す）。 */
+    .dice-row.n4 { gap: 12px 8px; }
+    .dice-row.n4 .die { width: clamp(38px, calc((100vw - 174px) / 4), 64px); }
+    .dice-row.n5 { gap: 12px 6px; }
+    .dice-row.n5 .die { width: clamp(28px, calc((100vw - 180px) / 5), 50px); }
+    /* 合体役（強襲/黄金律）成立時：参加ダイスを発光リング＋ステージ全体オーラでハイライト（resolveRollのcombo分岐で付与）。 */
+    .die.combo-lit, .d3-slot.combo-lit { animation: comboRing .9s ease-in-out infinite; }
+    @keyframes comboRing { 0%,100%{ filter: drop-shadow(0 0 4px var(--cc, #F0C040)); } 50%{ filter: drop-shadow(0 0 14px var(--cc, #F0C040)); } }
+    .dice-stage.combo::after { content:''; position:absolute; inset:-8%; z-index:0;
+      background: radial-gradient(closest-side, color-mix(in srgb, var(--cc, #F0C040) 40%, transparent), transparent 72%);
+      animation: fadeIn .3s ease; pointer-events:none; }
     .die .die-body { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
     .die .die-face {
       position: absolute; width: 50%; height: 50%;
@@ -250,11 +283,31 @@
     /* ===== 3Dダイス（立方体）：小さめ・画面に収まるサイズ。空中は等速→着地で減速、左→右に発射 ===== */
     /* 既定の3D立体ダイス: --d3 で一辺を可変化（62px固定を廃止）。
        3個＋gap×2 が「画面幅 − レール両側106px（46px×2の幅短縮を反映） − 余裕」に収まるよう clamp で追従させ、
-       広い画面では84pxまで拡大してダイスを主役化する（レビュー指摘B1対応。レール小型化に伴いさらに拡大） */
-    .dice-row.d3 { gap: 22px; --d3: clamp(62px, calc((100vw - 152px) / 3), 94px); }
-    /* perspective は各スロットに置く（間の要素で3Dが潰れないように） */
-    .d3-slot { position: relative; perspective: 760px; perspective-origin: 50% 45%; }
+       広い画面では90pxまで拡大してダイスを主役化する（レビュー指摘B1対応。レール小型化に伴いさらに拡大）。
+       --d3-base は3個時の基準サイズ。4/5個はこれを比率縮小して1列（折り返しなし）に収める
+       （index_3d.html 実験の 100/84/68 比率を参考にしつつ、本体は側方レール回避の290px幅corridorに
+       厳密に収まるよう実測で調整：4個は基準の80%・5個は62%）。
+       --d3-base 自体は親の .dice-stage で定義（台座の固定サイズ算出と共有するため、ここでは再定義しない）。 */
+    .dice-row.d3 { gap: 12px 10px; --d3: var(--d3-base); }
+    /* 2段用の折り返し（max-width強制）は撤去。1列のまま4/5個を詰めて収める。
+       4個：ダイスを80%に縮小し、列間隔も詰める。5個はさらに62%まで縮小し、
+       .d3-slot に負のマージンを与えて千鳥の前後ズレを活かしながら水平方向を詰める
+       （前後に互い違いのため多少の水平食い込みでも顔同士は重ならない）。 */
+    .dice-row.d3.n4 { gap: 12px 4px; --d3: calc(var(--d3-base) * 0.8); }
+    .dice-row.d3.n5 { gap: 12px 0px; --d3: calc(var(--d3-base) * 0.62); }
+    .dice-row.d3.n5 .d3-slot { margin: 0 -4px; }
+    /* perspective は各スロットに置く（間の要素で3Dが潰れないように）。
+       基準値は index_3d.html の俯瞰カメラ実験で確定した値（820px / 50% 28%）。
+       .d3-slot.bonus はセレクタ詳細度が高く常にこちらを上書きするので、ボーナス金ダイス（正面カメラ）は影響を受けない。
+       flex: 0 0 auto でflexboxによる暗黙のshrinkを禁止し、サイズは常に --d3 由来の値のみで決まるようにする。 */
+    .d3-slot { position: relative; perspective: 820px; perspective-origin: 50% 28%; flex: 0 0 auto; }
     .d3-slot.bonus { perspective: 1100px; }
+    /* 千鳥（ジグザグ）配置：本体メインダイス(Die3D)専用。index番目の偶数/奇数で前後にずらす。
+       オフセットはダイスサイズ（--d3）に比例させる（固定pxだと個数別に縮小したダイスに対して過大になるため）。
+       台座・gain-banner・bet-toggle と縦方向に衝突しない範囲として ±30%/24% を採用（index_3d.html の
+       100px基準時オフセット30px/24pxと同じ比率）。 */
+    .d3-slot.zigzag-a { transform: translateY(calc(var(--d3, 62px) * 0.30)); z-index: 2; }
+    .d3-slot.zigzag-b { transform: translateY(calc(var(--d3, 62px) * -0.24)); z-index: 1; }
     /* ボーナスの大きい金ダイス用の大きめ跳ね上げ */
     @keyframes d3launchBig {
       0%  { transform: translateY(0);      animation-timing-function: cubic-bezier(.2,.55,.5,1); }
@@ -266,7 +319,12 @@
       100%{ transform: translateY(0); }
     }
     .d3-launch { transform-style: preserve-3d; }
+    /* .d3-tilt: ボーナス画面の金ダイス(BonusDie3D)専用の正面カメラ用飾り傾き（不変・維持）。 */
     .d3-tilt { transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(-12deg); }
+    /* .d3-cam-tilt / .d3-yaw: 本体メインダイス(Die3D)専用の俯瞰（桃鉄式）カメラ。
+       DOM順は d3-launch > d3-cam-tilt > d3-yaw > d3-cube。全ダイス共通・固定角（個体差なし）。 */
+    .d3-cam-tilt { transform-style: preserve-3d; transform: rotateX(-58deg); }
+    .d3-yaw { transform-style: preserve-3d; }
     .d3-cube { position: relative; width: var(--d3, 62px); height: var(--d3, 62px); transform-style: preserve-3d;
       transform: rotateX(-20deg) rotateY(24deg); --d3half: calc(var(--d3, 62px) / 2); }
     .d3-cube.bonus { width: 120px; height: 120px; --d3half: 60px; }   /* ボーナスは大きめの金ダイス1個 */
@@ -507,7 +565,9 @@
     .mini-bar { position: relative; z-index: 6; display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; gap: 8px; }
     .ghost-btn { background: rgba(0,0,0,.45); border: 1.5px solid rgba(255,255,255,.35); color:#fff; font-weight:700; font-size:13px; padding:6px 12px; border-radius:999px; cursor:pointer; }
     .ghost-btn.danger { border-color: rgba(220,38,38,.7); color:#fca5a5; }
-    .ghost-label { background: rgba(0,0,0,.5); color:#fff; font-weight:700; font-size:13px; padding:6px 12px; border-radius:999px; }
+    .ghost-label { background: rgba(0,0,0,.5); color:#fff; font-weight:700; font-size:13px; padding:6px 12px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; }
+    .gl-ico { width:1.1em; height:1.1em; object-fit:contain; vertical-align:-2px; margin-right:2px; }
+    .oc-ico, .bt-ico, .rb-ico { width:1em; height:1em; object-fit:contain; vertical-align:-2px; }
     /* 相手の所持金（スティール/アタック画面のミニバー） */
     .foe-coins { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; font-size:13px; font-weight:900; color:#F0C040;
       background:rgba(0,0,0,.5); border:1.5px solid rgba(240,192,64,.6); padding:5px 11px; border-radius:999px; }
@@ -541,17 +601,42 @@
     .z-banner .scroll-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; }
     .z-banner .scroll-content { position:relative; z-index:2; text-align:center; }
     .z-badge { display:inline-block; margin-top:4px; padding:3px 10px; border-radius:999px; color:#fff; font-size:12px; font-weight:800; }
+    .z-badge .zb-ico { width:14px; height:14px; object-fit:contain; vertical-align:-2px; }
     .z-chara { position:absolute; left:50%; bottom:12%; transform:translateX(-50%); width:120px; height:120px; z-index:3; animation: zJump .3s ease-in-out .5s 2 alternate; }
     .z-chara img { width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 6px 6px rgba(0,0,0,.5)); }
     @keyframes zJump { from{ transform: translateX(-50%) translateY(0);} to{ transform: translateX(-50%) translateY(-22px);} }
     .z-next { position:absolute; left:50%; bottom:5%; transform:translateX(-50%); color:#fff; font-weight:800; font-size:14px; background:rgba(0,0,0,.5); padding:6px 16px; border-radius:999px; animation: fadeIn .3s ease; }
     @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
 
+    /* ============ COMBO CUTIN（強襲/黄金律の合体役）============
+       ZorumeOverlayと同格の「見得」（約1.3秒）だが、全画面を覆う不透明背景は敷かない。
+       上部バナー＋交差ダイスアイコンのみを重ね、下のdice-stage（.combo-lit / .dice-stage.combo の
+       合体ハイライト）が透けて見え続けるようにする。position:absoluteの.main-screen配下に置くこと。 */
+    .combo-cutin { position:absolute; inset:0; z-index:300; overflow:hidden; pointer-events:none; }
+    .cc-flash { position:absolute; inset:0; background:#fff; opacity:0; animation: zFlash .5s ease-out; }
+    .cc-scrim { position:absolute; inset:0; opacity:0;
+      background: radial-gradient(ellipse 72% 62% at 50% 58%, transparent 0%, transparent 38%, rgba(5,7,13,.5) 100%);
+      animation: ccScrimIn .3s ease-out forwards; }
+    @keyframes ccScrimIn { to { opacity:1; } }
+    .cc-banner { position:absolute; left:50%; top:17%; transform: translate(-50%,-50%); width:320px; height:118px; display:grid; place-items:center; z-index:3; animation: zBannerIn .35s ease-out .15s both; }
+    .cc-banner .scroll-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; }
+    .cc-content { position:relative; z-index:2; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .cc-text { display:flex; flex-direction:column; align-items:center; }
+    .cc-badge { display:inline-block; margin-top:4px; padding:3px 12px; border-radius:999px; color:#fff; font-size:12px; font-weight:800; letter-spacing:.3px; }
+    .cc-flank { width:46px; height:46px; display:grid; place-items:center; opacity:0; filter: drop-shadow(0 0 10px var(--cc, #fff)); }
+    .cc-flank.a { animation: ccFlankA .35s ease-out .3s forwards; }
+    .cc-flank.b { animation: ccFlankB .35s ease-out .38s forwards; }
+    @keyframes ccFlankA { from{ opacity:0; transform: translateX(26px) rotate(-18deg) scale(.5); } to{ opacity:1; transform: translateX(0) rotate(-18deg) scale(1); } }
+    @keyframes ccFlankB { from{ opacity:0; transform: translateX(-26px) rotate(18deg) scale(.5); } to{ opacity:1; transform: translateX(0) rotate(18deg) scale(1); } }
+    .cc-flank-ico { width:100%; height:100%; object-fit:contain; }
+    .cc-flank .face-emoji { font-size:32px; }
+
     /* ============ SCREEN 03 — BONUS ROLL ============ */
     .bonus-screen { align-items: center; }
     .bonus-dim { position:absolute; inset:0; background: radial-gradient(circle at 50% 42%, rgba(0,0,0,.26) 0%, rgba(0,0,0,.44) 58%, rgba(0,0,0,.62) 100%); }
     .trigger-card { position:relative; z-index:6; display:flex; align-items:center; gap:8px; background:rgba(17,24,39,.85); border:2px solid; border-radius:12px; padding:6px 14px; color:#fff; font-weight:800; font-size:13px; margin-bottom:4px; }
-    .trigger-emoji { letter-spacing:-2px; }
+    .trigger-emoji { letter-spacing:-2px; display:inline-flex; align-items:center; }
+    .trigger-emoji .tg-ico { width:20px; height:20px; object-fit:contain; margin-left:-2px; }
     .bonus-base { position:relative; z-index:6; display:inline-flex; align-items:center; gap:5px; margin:2px auto 0;
       font-size:14px; font-weight:800; color:#e5e7eb; background:rgba(0,0,0,.5); border:1.5px solid rgba(240,192,64,.55);
       padding:5px 14px; border-radius:999px; }
@@ -583,7 +668,7 @@
     .bt-sub { font-size:10px; color:#cbd5e1; margin-top:2px; }
 
     /* ============ SCREEN 04 — ATTACK SELECT ============ */
-    .attack-screen, .result-screen, .steal-screen, .castle-screen, .season-screen { background-color: var(--navy); }
+    .attack-screen, .result-screen, .steal-screen, .castle-screen, .season-screen, .assault-screen { background-color: var(--navy); }
     .castle-stage { position: relative; z-index:5; flex:1; display:grid; place-items:center; min-height:0; margin: 4px 0; }
     .castle-img { width: 74%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(0,0,0,.5)); }
     .castle-fallback { font-size: 160px; }
@@ -622,6 +707,16 @@
     .result-coin .rc-icon { width:36px; height:36px; object-fit:contain; }
     .result-rate { font-size:12px; color:#9ca3af; }
     .result-react { margin:6px 0; font-size:13px; color:#fbbf24; font-weight:700; }
+
+    /* ============ SCREEN 05B — ASSAULT（合体役「強襲」：attack×steal／StealScreenベースの3タップ選択制） ============ */
+    .assault-screen { align-items:center; }
+    /* 村レイアウト（建物タップ）は全幅で表示：align-items:center に負けないよう stretch（stealと同様） */
+    .assault-screen .castle-stage.village { align-self:stretch; width:100%; }
+    /* 赤系アクセント：相手情報の縁取り・合体バッジ相当の受け取りボタンをstealの金基調から差別化 */
+    .assault-screen .steal-foe-face { border-color: rgba(220,38,38,.75); }
+    .assault-screen .steal-summary { border-color: var(--red); }
+    .assault-chara { position:absolute; left:6px; bottom:118px; width:96px; height:96px; z-index:6; }
+    .assault-chara img { width:100%; height:100%; object-fit:contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
 
     /* ============ SCREEN 06 — STEAL ============ */
     .steal-screen { align-items:center; }
@@ -745,6 +840,9 @@
     @keyframes hitShake { 0%,100%{ transform:translateX(0);} 25%{ transform:translateX(-4px) rotate(-2deg);} 75%{ transform:translateX(4px) rotate(2deg);} }
     .village-item.broken .vi-img { filter: grayscale(1) brightness(.42) drop-shadow(0 4px 6px rgba(0,0,0,.55)); transform: rotate(-3deg) scale(.9); }
     .village-item .vi-rubble { position:absolute; z-index:2; top:58%; left:50%; transform:translate(-50%,-50%); width:96px; height:96px; object-fit:contain; pointer-events:none; filter:drop-shadow(0 3px 4px rgba(0,0,0,.5)); }
+    /* 強襲：タップ済みの棟の見分け（破壊＝暗く傾ける／シールド防御＝青い光で保護されたまま） */
+    .village-item.destroyed .vi-img { filter: grayscale(1) brightness(.42) drop-shadow(0 4px 6px rgba(0,0,0,.55)); transform: rotate(-3deg) scale(.9); }
+    .village-item.shielded .vi-img { filter: brightness(.9) drop-shadow(0 0 12px rgba(96,165,250,.7)) drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
     /* 連番エフェクト（コイン噴出／攻撃インパクト／盗み）共通 */
     .fx-anim { position:absolute; left:50%; transform:translate(-50%,-50%); pointer-events:none; z-index:7; }
     .fx-anim .fx-f { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:0; }
@@ -833,7 +931,7 @@
     .debug-item:disabled { opacity: .4; cursor: default; }
     .debug-close { margin-top: 3px; padding: 8px; border-radius: 9px; border: none; background: #334155; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
     /* ============ ROLL POINT (bet) toggle ============ */
-    /* Coin Master本家のスロット直下「X15⚡」ブーストボタンに寄せ、単一トグルに統合（×1→×2→×3→×1と循環）。
+    /* Coin Master本家のスロット直下「X15⚡」ブーストボタンに寄せた単一トグル（積むダイス数：3個→4個→5個→3個と循環）。
        残りロールバー（.energy-wrap）の直上に近接配置（margin-bottomで4px程度の間隔）。 */
     .bet-toggle { position: relative; z-index: 6; display: block; margin: 0 auto 6px; width: 132px; height: 54px;
       background: url("assets/images/ui/Btn_WoodChip_On.png") center/100% 100% no-repeat; border: none;
@@ -841,7 +939,6 @@
       cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .bet-toggle:active { transform: translateY(1px); }
     .bet-toggle:disabled { opacity: .5; cursor: default; }
-    .bet-toggle .bt-ico { font-size: 22px; }
 
     /* ============ BOTTOM DOCK (shortcuts + roll) ============ */
     .bottom-dock { position: relative; z-index: 6; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 0 8px 10px;
@@ -925,6 +1022,12 @@
     .mult-x { font-size:64px; font-weight:900; color:#fff; text-shadow:0 0 16px #F0C040, 0 3px 0 #b45309; animation: multSlam .45s cubic-bezier(.2,1.6,.4,1); }
     @keyframes multSlam { 0%{ transform:scale(2.6) rotate(-12deg); opacity:0; } 60%{ transform:scale(.88) rotate(4deg); opacity:1; } 100%{ transform:scale(1) rotate(0); } }
     .mult-total { font-size:34px; font-weight:900; animation: gainPop .4s ease-out; }
+    /* 黄金律（coin×jackpot 合体）：小判上乗せ行＋合体バッジ。mult-base/mult-x の並びに差し込む。 */
+    .mult-coinadd { font-size:14px; font-weight:800; color:#fde68a; background:rgba(240,192,64,.14); border:1.5px solid rgba(240,192,64,.5); border-radius:999px; padding:4px 14px; }
+    .mult-combo-badge { font-size:13px; font-weight:900; color:#fff; padding:4px 14px; border-radius:999px;
+      background:linear-gradient(135deg,#D97706,#059669); box-shadow:0 2px 8px rgba(0,0,0,.4); animation: gainPop .4s ease-out; }
+    /* k面ボーナス（JACKPOT_KMULT）到達時の上限表示 */
+    .mult-cap-note { font-size:12px; font-weight:800; color:#fca5a5; background:rgba(0,0,0,.4); padding:3px 12px; border-radius:999px; }
 
     /* ============ SHIELD OVERLAY (シールドぞろ目 獲得演出) ============ */
     .shield-overlay { position:absolute; inset:0; z-index:9998; display:grid; place-items:center; overflow:hidden;
@@ -944,6 +1047,8 @@
     .shield-pips i { width:24px; height:24px; border-radius:50%; background:#1e293b; border:2px solid #475569; transition: all .3s ease; }
     .shield-pips i.on { background:#60a5fa; border-color:#dbeafe; box-shadow:0 0 16px #60a5fa; transform:scale(1.15); }
     .shield-sub { font-size:14px; font-weight:800; color:#e5e7eb; background:rgba(0,0,0,.45); padding:6px 16px; border-radius:999px; }
+    /* k=4/5：満タン＋超過分をコインに変換した時の追加表示（SHIELD_EXCESS_COIN_MULT） */
+    .shield-excess { font-size:13px; font-weight:800; color:#fde68a; background:rgba(240,192,64,.16); border:1.5px solid rgba(240,192,64,.5); padding:5px 14px; border-radius:999px; animation: gainPop .4s ease-out .15s both; }
 
     /* ============ GACHA OVERLAY（仲間ガチャ 抽選演出） ============ */
     .gacha-overlay { position:absolute; inset:0; z-index:9998; display:grid; place-items:center; overflow:hidden;
@@ -1047,6 +1152,7 @@
       background:radial-gradient(circle at 50% 35%, rgba(255,255,255,.12), rgba(0,0,0,.4)); border:2px solid var(--rk); }
     .char-card-img { width:112%; height:112%; object-fit:contain; }
     .char-lock { font-size:30px; filter:grayscale(1); opacity:.8; }
+    .char-lock-img { width:30px; height:30px; object-fit:contain; filter:grayscale(1); opacity:.8; }
     .char-rank-tag { position:absolute; top:-2px; right:-2px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center;
       font-size:10px; font-weight:900; color:#0b0f19; border:1.5px solid rgba(255,255,255,.85); }
     .char-card-name { font-size:13px; font-weight:900; color:#fff; line-height:1.1; }
@@ -1096,6 +1202,54 @@
     .raid-hptext { position:absolute; inset:0; display:grid; place-items:center; font-size:12px; font-weight:900; color:#fff; text-shadow:0 1px 2px #000; }
     .raid-log { font-size:13px; font-weight:700; color:#fde68a; background:rgba(0,0,0,.45); padding:6px 12px; border-radius:8px; margin:6px 0; min-height:20px; }
     .raid-boss-name { font-size:14px; font-weight:900; color:#fff; text-shadow:0 2px 4px #000; margin:-2px 0 2px; }
+
+    /* 討伐マイルストーン：HPゲージ上の目盛りティック＋直下の報酬チップ */
+    .raid-ms-tick { position:absolute; top:0; bottom:0; width:2px; transform:translateX(-1px);
+      background:rgba(255,255,255,.35); z-index:2; pointer-events:none; transition:background .25s, box-shadow .25s; }
+    .raid-ms-tick.hit { background:#F0C040; box-shadow:0 0 6px #F0C040; }
+    .raid-ms-chips { display:flex; justify-content:space-between; gap:4px; margin-top:6px; }
+    .raid-ms-chip { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:1px;
+      padding:4px 2px; border-radius:9px; background:rgba(0,0,0,.4);
+      border:1.5px solid rgba(255,255,255,.15); filter:grayscale(.7); opacity:.55; transition:all .25s;
+      position:relative; }
+    .raid-ms-chip .msc-pct { font-size:9px; font-weight:800; color:#fca5a5; }
+    .raid-ms-chip .msc-amt { display:flex; align-items:center; gap:1px; font-size:10px; font-weight:900; color:#fde68a; white-space:nowrap; }
+    .raid-ms-chip .msc-ico { width:12px; height:12px; }
+    .raid-ms-chip.hit { filter:none; opacity:1; border-color:#F0C040;
+      background:linear-gradient(180deg,rgba(240,192,64,.25),rgba(0,0,0,.5)); box-shadow:0 0 8px rgba(240,192,64,.5); }
+    .raid-ms-chip .msc-check { position:absolute; top:-6px; right:-4px; font-size:11px; color:#34d399;
+      background:#0f172a; border-radius:50%; width:15px; height:15px; display:grid; place-items:center; line-height:1; }
+    .raid-ms-chip.clear { border-color:#F0C040; }
+    .raid-ms-chip.clear.ready { animation:msChipPulse 1s ease-in-out infinite; }
+    .raid-ms-chip.clear.claimed { filter:none; opacity:1; }
+    @keyframes msChipPulse { 0%,100%{ box-shadow:0 0 6px rgba(240,192,64,.4);} 50%{ box-shadow:0 0 16px rgba(240,192,64,.9);} }
+    .raid-ms-chip.pop { animation:msChipPop .5s cubic-bezier(.2,1.4,.5,1); }
+    @keyframes msChipPop { 0%{ transform:scale(1);} 40%{ transform:scale(1.18);} 100%{ transform:scale(1);} }
+
+    /* マイルストーン祝福オーバーレイ（HP到達時、約1.2秒・タップスキップ可） */
+    .raid-ms-celebrate { position:absolute; inset:0; z-index:40; overflow:hidden; cursor:pointer; }
+    .raid-ms-celebrate .rmc-flash { position:absolute; inset:0; background:#fff; opacity:0; animation: zFlash .5s ease-out; }
+    .raid-ms-celebrate .rmc-banner { position:absolute; top:26%; left:50%; transform:translate(-50%,-50%); width:290px; }
+    .raid-ms-celebrate .rmc-shine { position:absolute; top:22%; left:50%; transform:translate(-50%,-50%); width:130px; height:130px; z-index:-1; }
+
+    /* 撃破時の豪華祝福オーバーレイ（約1.5秒・タップスキップ可） */
+    .raid-defeat-celebrate { position:absolute; inset:0; z-index:41; overflow:hidden; cursor:pointer; }
+    .raid-defeat-celebrate .rdc-flash { position:absolute; inset:0; background:#fff; opacity:0; animation: zFlash .6s ease-out; }
+    .raid-defeat-celebrate .rdc-effect { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:.9; }
+    .raid-defeat-celebrate .rdc-banner { position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:310px; }
+    .raid-defeat-celebrate .rdc-banner .scroll-title { font-size:29px; }
+
+    /* 撃破報酬 claim() の受取バースト */
+    .raid-claim-pop { position:absolute; left:50%; bottom:20%; transform:translateX(-50%); z-index:46;
+      display:flex; align-items:center; gap:5px; font-size:16px; font-weight:900; color:#F0C040; text-shadow:0 2px 4px #000;
+      animation: claimPopFloat 1.15s ease-out forwards; pointer-events:none; }
+    .raid-claim-pop .rcp-ico { width:18px; height:18px; }
+    @keyframes claimPopFloat {
+      0%{ opacity:0; transform:translate(-50%,10px) scale(.8); }
+      15%{ opacity:1; transform:translate(-50%,0) scale(1.12); }
+      70%{ opacity:1; transform:translate(-50%,-42px) scale(1); }
+      100%{ opacity:0; transform:translate(-50%,-64px) scale(1); }
+    }
 
     /* 討伐編成バー（ClanRaidScreen内）＋討伐完了表示 */
     .raid-party-bar { width:92%; margin:8px 0 4px; background:rgba(0,0,0,.4); border:1.5px solid rgba(240,192,64,.4); border-radius:12px; padding:8px 10px; box-sizing:border-box; }
@@ -1163,6 +1317,7 @@
     .st-tier { font-weight:900; color:#F0C040; font-size:14px; } .st-reward { font-weight:800; color:#fff; } .st-req { font-size:11px; color:#cbd5e1; text-align:right; }
     .season-tier.locked .st-req { color:#9ca3af; }
     .tier-btn { padding:7px 4px; border-radius:8px; border:none; background:#334155; color:#9ca3af; font-weight:800; font-size:12px; cursor:pointer; }
+    .tier-btn .tb-lock { width:14px; height:14px; object-fit:contain; vertical-align:-2px; filter:grayscale(1); opacity:.85; }
     .tier-btn.ready { background:linear-gradient(180deg,#34d399,#059669); color:#fff; }
     .season-tier.claimed .tier-btn { background:rgba(52,211,153,.25); color:#6ee7b7; }
 
@@ -1173,6 +1328,24 @@
     .invite-mile { display:grid; grid-template-columns:28px 1fr 90px 56px; align-items:center; gap:6px; background:rgba(17,24,39,.6); border:1.5px solid #334155; border-radius:12px; padding:9px 10px; margin-bottom:8px; }
     .invite-mile.reached { border-color:#059669; }
     .im-label { font-size:12px; font-weight:700; color:#fff; } .im-reward { font-size:12px; font-weight:800; color:#F0C040; text-align:right; }
+
+    /* settings */
+    .settings-sec { background:rgba(0,0,0,.4); border:1.5px solid rgba(240,192,64,.4);
+      border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+    .settings-sec-title { font-size:13px; font-weight:900; color:var(--gold-light); margin-bottom:10px; }
+    .setting-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:10px 0; }
+    .setting-row .sr-label { font-size:13px; font-weight:700; color:#fff; }
+    .setting-row .sr-val { font-size:12px; font-weight:800; color:var(--gold-light); min-width:42px; text-align:right; }
+    .set-range { -webkit-appearance:none; appearance:none; width:100%; flex:1; height:6px; border-radius:999px;
+      background:linear-gradient(90deg,#F0C040 0%,#F0C040 var(--fill,100%),rgba(255,255,255,.18) var(--fill,100%)); margin:4px 0 2px; }
+    .set-range::-webkit-slider-thumb { -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
+      background:#fff; border:3px solid #F0C040; box-shadow:0 1px 4px rgba(0,0,0,.5); cursor:pointer; }
+    .set-range::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:#fff; border:3px solid #F0C040; cursor:pointer; }
+    .set-seg { display:flex; gap:6px; }
+    .set-seg button { flex:1; padding:8px 6px; border-radius:10px; font-size:11px; font-weight:800;
+      background:rgba(255,255,255,.06); border:1.5px solid rgba(240,192,64,.4); color:#fff; cursor:pointer; }
+    .set-seg button.on { background:linear-gradient(180deg,rgba(240,192,64,.3),rgba(0,0,0,.4)); border-color:#F0C040; box-shadow:0 0 8px rgba(240,192,64,.5); }
+    .setting-note { font-size:10px; color:#9ca3af; margin-top:-2px; }
 
     /* shop */
     .shop-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }

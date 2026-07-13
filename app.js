@@ -21,12 +21,18 @@ const SFX = (() => {
   try {
     enabled = (localStorage.getItem('ndm_sound') ?? '1') === '1';
   } catch (e) {}
+  let volume = 100;
+  try {
+    volume = parseInt(localStorage.getItem('ndm_se_vol') ?? '100', 10);
+    if (isNaN(volume)) volume = 100;
+  } catch (e) {}
+  const BASE_GAIN = 0.32;
   const ensure = () => {
     if (!ctx) {
       try {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         master = ctx.createGain();
-        master.gain.value = 0.32;
+        master.gain.value = BASE_GAIN * (volume / 100);
         master.connect(ctx.destination);
       } catch (e) {
         return null;
@@ -105,6 +111,17 @@ const SFX = (() => {
     isEnabled() {
       return enabled;
     },
+    setVolume(v) {
+      volume = Math.max(0, Math.min(100, v | 0));
+      try {
+        localStorage.setItem('ndm_se_vol', String(volume));
+      } catch (e) {}
+      if (master) master.gain.value = BASE_GAIN * (volume / 100);
+    },
+    getVolume() {
+      return volume;
+    },
+    setBgmVolume(f) {/* 将来: bgmGain.gain.value = f; 現状は安全に無処理（BGM未実装） */},
     tap() {
       play(t => tone(t, 520, 0.07, {
         type: 'square',
@@ -291,72 +308,179 @@ const FACE_LIST = Object.values(DICE_FACES);
 const WEIGHTED = FACE_LIST.flatMap(f => Array(f.weight).fill(f));
 const rollFace = () => WEIGHTED[Math.floor(Math.random() * WEIGHTED.length)];
 
+/* ---- 積むダイス数（3/4/5）。消費ロールは振ったダイスの数と同じ（3個=3, 4個=4, 5個=5） ---- */
+const DICE_MIN = 3,
+  DICE_MAX = 5;
+const DICE_COST = {
+  3: 3,
+  4: 4,
+  5: 5
+};
+// メイン画面の初期表示（アイドル）ダイス列。先頭n個を使う。
+const INITIAL_DICE_SEQ = [DICE_FACES.COIN, DICE_FACES.ATTACK, DICE_FACES.SHIELD, DICE_FACES.COIN, DICE_FACES.STEAL];
+const initialDice = n => INITIAL_DICE_SEQ.slice(0, n);
+const idlePhases = n => Array(n).fill('idle');
+
+/* ---- 合体役（4個以上でのみ抽選対象）：両方の役が同時に条件を満たすと成立し、両方の効果＋一律ボーナスが乗る ---- */
+const COMBO_DEFS = [{
+  id: 'assault',
+  roles: ['attack', 'steal'],
+  route: 'assault'
+},
+// 強襲＝アタック＋スティール
+{
+  id: 'goldrule',
+  roles: ['coin', 'jackpot'],
+  route: 'goldrule'
+} // 黄金律＝コイン＋ジャックポット
+];
+const COMBO_K = 1.15; // 合体成立時の一律ボーナス倍率
+const GOLDRULE_COIN_ADD = 1; // 黄金律：coinBaseForStage(stage)×この係数を小判上乗せ
+const ASSAULT_SHIELD_STEAL_DECAY = 0.6; // 強襲：シールドで防がれた時も盗みは×0.6で成立
+const ASSAULT_SUMMARY_HOLD = 2200; // 強襲：サマリー表示から自動で受け取るまでの時間(ms)（タップでスキップ可）
+
 /* ---- 役ベースの抽選 ----
    各ダイスを独立に振るのではなく、まず「役」を出現確率で決め、
-   その役に合う3つの出目を作ってからダイスを回す。
-   確率（100ロールあたりの期待回数）: */
-const HAND_ODDS = [{
-  id: 'attack',
-  p: 0.05
-},
-// アタックぞろ目  ≈5回
-{
-  id: 'steal',
-  p: 0.05
-},
-// スティールぞろ目 ≈5回
-{
-  id: 'shield',
-  p: 0.05
-},
-// シールドぞろ目  ≈5回
-{
-  id: 'jackpot',
-  p: 0.04
-},
-// ジャックポットぞろ目 ≈4回
-{
-  id: 'coin',
-  p: 0.05
-},
-// コインぞろ目    ≈5回
-{
-  id: 'combo',
-  p: 0.05
-} // ジャックポット×2 ≈5回
-]; // 残り ≈71% は通常役
-const shuffle3 = a => {
+   その役に合うn個の出目を作ってからダイスを回す。
+   確率（100ロールあたりの期待回数）。ダイス数（3/4/5）でテーブルが変わる：
+   4個以上でのみ「強襲(assault)」「黄金律(goldrule)」の合体役が抽選対象に入る。 */
+const HAND_ODDS = {
+  3: [{
+    id: 'attack',
+    p: 0.05
+  },
+  // アタックぞろ目  ≈5回
+  {
+    id: 'steal',
+    p: 0.05
+  },
+  // スティールぞろ目 ≈5回
+  {
+    id: 'shield',
+    p: 0.05
+  },
+  // シールドぞろ目  ≈5回
+  {
+    id: 'jackpot',
+    p: 0.04
+  },
+  // ジャックポットぞろ目 ≈4回
+  {
+    id: 'coin',
+    p: 0.05
+  },
+  // コインぞろ目    ≈5回
+  {
+    id: 'combo',
+    p: 0.05
+  } // ジャックポット×2 ≈5回
+  ],
+  // 残り ≈71% は通常役
+  4: [{
+    id: 'attack',
+    p: 0.05
+  }, {
+    id: 'steal',
+    p: 0.05
+  }, {
+    id: 'shield',
+    p: 0.05
+  }, {
+    id: 'jackpot',
+    p: 0.04
+  }, {
+    id: 'coin',
+    p: 0.05
+  }, {
+    id: 'combo',
+    p: 0.04
+  },
+  // ジャックポット×2 ≈4回（合体枠が増えるぶん微減）
+  {
+    id: 'assault',
+    p: 0.03
+  },
+  // 強襲（合体）
+  {
+    id: 'goldrule',
+    p: 0.03
+  } // 黄金律（合体）
+  ],
+  5: [{
+    id: 'attack',
+    p: 0.05
+  }, {
+    id: 'steal',
+    p: 0.05
+  }, {
+    id: 'shield',
+    p: 0.05
+  }, {
+    id: 'jackpot',
+    p: 0.04
+  }, {
+    id: 'coin',
+    p: 0.05
+  }, {
+    id: 'combo',
+    p: 0.04
+  }, {
+    id: 'assault',
+    p: 0.05
+  },
+  // 強襲（合体）：5個は最も出やすい
+  {
+    id: 'goldrule',
+    p: 0.05
+  } // 黄金律（合体）：5個は最も出やすい
+  ]
+};
+const shuffleN = a => {
   const b = [...a];
-  for (let i = 2; i > 0; i--) {
+  for (let i = b.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [b[i], b[j]] = [b[j], b[i]];
   }
   return b;
 };
 const NON_JACKPOT = FACE_LIST.filter(f => f.id !== 'jackpot');
-function normalRoll() {
-  // 通常役：ぞろ目でもJP×2でもない3つ
-  let r;
+// ジャックポット×2（レガシーのjpcombo役）＋残りn-2個の非ジャックポット面。
+// 残りは重複を持たせない（NON_JACKPOTは4種なのでn<=5なら常に足りる）ことで、
+// 残り面が3つ以上揃って意図せず「ぞろ目」やCOMBO_DEFSの合体条件に化けるのを防ぐ。
+function jpComboFaces(n) {
+  const restLen = Math.max(0, n - 2);
+  const rest = shuffleN(NON_JACKPOT).slice(0, restLen);
+  return shuffleN([DICE_FACES.JACKPOT, DICE_FACES.JACKPOT, ...rest]);
+}
+function normalRoll(n) {
+  // 通常役：ぞろ目でもJP×2でも合体でもないn個
+  let r, count;
   do {
-    r = [rollFace(), rollFace(), rollFace()];
-  } while (r[0].id === r[1].id && r[1].id === r[2].id || r.filter(x => x.id === 'jackpot').length >= 2);
+    r = Array.from({
+      length: n
+    }, () => rollFace());
+    count = {};
+    r.forEach(f => {
+      count[f.id] = (count[f.id] || 0) + 1;
+    });
+  } while (Object.values(count).some(c => c >= 3) || (count.jackpot || 0) >= 2 || COMBO_DEFS.some(c => (count[c.roles[0]] || 0) >= 2 && (count[c.roles[1]] || 0) >= 2));
   return r;
 }
-function decideHand() {
+function decideHand(n) {
+  const odds = HAND_ODDS[n] || HAND_ODDS[DICE_MIN];
   const roll = Math.random();
   let acc = 0;
-  for (const h of HAND_ODDS) {
+  for (const h of odds) {
     acc += h.p;
     if (roll < acc) {
-      if (h.id === 'combo') {
-        const other = NON_JACKPOT[Math.floor(Math.random() * NON_JACKPOT.length)];
-        return shuffle3([DICE_FACES.JACKPOT, DICE_FACES.JACKPOT, other]);
-      }
+      if (h.id === 'combo') return jpComboFaces(n);
+      if (h.id === 'assault') return shuffleN([...Array(Math.ceil(n / 2)).fill(DICE_FACES.ATTACK), ...Array(Math.floor(n / 2)).fill(DICE_FACES.STEAL)]);
+      if (h.id === 'goldrule') return shuffleN([...Array(Math.ceil(n / 2)).fill(DICE_FACES.COIN), ...Array(Math.floor(n / 2)).fill(DICE_FACES.JACKPOT)]);
       const f = DICE_FACES[h.id.toUpperCase()];
-      return [f, f, f]; // ぞろ目
+      return Array(n).fill(f); // ぞろ目
     }
   }
-  return normalRoll();
+  return normalRoll(n);
 }
 
 // DEBUG — force any hand on the next roll (faces:null = random)
@@ -389,6 +513,22 @@ const DEBUG_HANDS = [{
   key: 'coinwin',
   label: '🪙 コイン獲得（通常）',
   faces: [D.COIN, D.COIN, D.ATTACK]
+}, {
+  key: 'assault',
+  label: '⚔️🥷 強襲（合体・4個）',
+  faces: [D.ATTACK, D.ATTACK, D.STEAL, D.STEAL]
+}, {
+  key: 'goldrule',
+  label: '🪙⭐ 黄金律（合体・4個）',
+  faces: [D.COIN, D.COIN, D.JACKPOT, D.JACKPOT]
+}, {
+  key: 'assault5',
+  label: '⚔️🥷 強襲（合体・5個）',
+  faces: [D.ATTACK, D.ATTACK, D.ATTACK, D.STEAL, D.STEAL]
+}, {
+  key: 'goldrule5',
+  label: '🪙⭐ 黄金律（合体・5個）',
+  faces: [D.COIN, D.COIN, D.COIN, D.JACKPOT, D.JACKPOT]
 }, {
   key: 'random',
   label: '🎲 ランダム',
@@ -430,14 +570,38 @@ function calculateCoins(results, stage) {
   const coinCount = results.filter(r => r.id === 'coin').length;
   return baseCoins + addCoins * coinCount;
 }
-function checkZorume(results) {
-  const isZorume = results[0].id === results[1].id && results[1].id === results[2].id;
-  const jackpotCount = results.filter(r => r.id === 'jackpot').length;
-  const isJackpotCombo = jackpotCount >= 2 && !isZorume;
+// 出目配列を評価して役を確定する（唯一の真実）。優先度: combo（強襲/黄金律） > ぞろ目 > JP×2 > 通常。
+// debug/demoはfacesを直接注入するだけで、この関数がそのまま正しい役を判定する。
+function evaluateHand(faces) {
+  const count = {};
+  faces.forEach(f => {
+    count[f.id] = (count[f.id] || 0) + 1;
+  });
+  for (const c of COMBO_DEFS) {
+    const [a, b] = c.roles;
+    if ((count[a] || 0) >= 2 && (count[b] || 0) >= 2) {
+      return {
+        kind: 'combo',
+        comboId: c.id,
+        route: c.route,
+        roles: c.roles,
+        count
+      };
+    }
+  }
+  const z = Object.keys(count).find(id => count[id] >= 3);
+  if (z) return {
+    kind: 'zorome',
+    faceId: z,
+    count
+  };
+  if ((count.jackpot || 0) >= 2) return {
+    kind: 'jpcombo',
+    count
+  };
   return {
-    isZorume,
-    isJackpotCombo,
-    faceId: results[0].id
+    kind: 'normal',
+    count
   };
 }
 
@@ -663,18 +827,22 @@ const generateStealResults = ids => ids.map(id => {
 // スティール：相手の村の建物ごとの奪取パラメータ（建物を直接タップして盗む）
 const STEAL_BUILDING = {
   castle: {
+    label: '天守閣',
     coinRange: [40000, 85000],
     boxChance: 0.15
   },
   storehouse: {
+    label: '蔵',
     coinRange: [50000, 90000],
     boxChance: 0.38
   },
   statue: {
+    label: '石像',
     coinRange: [15000, 35000],
     boxChance: 0.50
   },
   garden: {
+    label: '庭園',
     coinRange: [25000, 55000],
     boxChance: 0.22
   }
@@ -692,7 +860,6 @@ const stealFromBuilding = it => {
     hasBox: Math.random() < p.boxChance
   };
 };
-
 // SCREEN 07 — own castle parts (build)
 const PART_COST = [100, 300, 700, 1500, 3000];
 const makeCastleParts = () => [{
@@ -765,6 +932,46 @@ const coinBaseForStage = s => {
   const n = Math.min(Math.max(1, s | 0), MAX_STAGE);
   return 250 * n * (n + 1);
 };
+
+// ---- 役スケール（成立面数 k。k=3が現行基準。合体役=assault/goldruleには適用しない） ----
+const STEAL_TAPS_BY_K = {
+  3: 3,
+  4: 4,
+  5: 4
+}; // タップ棟数（村は4棟が上限）
+const STEAL_K5_MULT = 1.2; // k=5：総額の追加倍率
+const ATTACK_DESTROY_BY_K = {
+  3: 1,
+  4: 2,
+  5: 3
+}; // 破壊棟数 = k−2
+const ATTACK_COIN_KMULT = {
+  3: 1,
+  4: 1.5,
+  5: 2
+}; // coin部分のkスケール
+const ATTACK_COIN_CAP_FRAC = 0.5; // 1回で奪える相手コイン割合の上限（50%ハードキャップ）
+const JACKPOT_KMULT = {
+  3: 1,
+  4: 2,
+  5: 3
+}; // 獲得×(k−2)
+const JACKPOT_CAP_MULT = 200; // コインボーナス最大×200との階層逆転を解消し、JPを頂点に維持
+const jackpotCap = stage => coinBaseForStage(stage) * JACKPOT_CAP_MULT;
+const COIN_BONUS_MULTS_BY_K = {
+  // コインボーナス6面（kでシフト）
+  3: [2, 5, 10, 20, 50, 100],
+  4: [5, 10, 20, 50, 100, 200],
+  5: [10, 20, 50, 100, 200, 200]
+};
+const coinBonusTableForK = k => (COIN_BONUS_MULTS_BY_K[k] || COIN_BONUS_MULTS_BY_K[3]).map((m, i) => ({
+  face: i + 1,
+  label: '×' + m,
+  sub: '',
+  multiplier: m
+}));
+const SHIELD_EXCESS_COIN_MULT = 5; // 超過1枚 = coinBase × これ
+const shieldExcessCoin = (stage, k) => coinBaseForStage(stage) * SHIELD_EXCESS_COIN_MULT * Math.max(0, k - 3);
 
 /* 対戦相手ロスター：大金持ち → 初心者 の順。アタック/スティールのたびに入れ替わる。
    coins=保有コイン（獲得額のベース）、shields=初期シールド枚数（金持ちほど堅い）。 */
@@ -1125,13 +1332,15 @@ function Toast({
 /* ============================================================
    SCREEN 01 — MAIN ROLL
    ============================================================ */
-const INITIAL_DICE = [DICE_FACES.COIN, DICE_FACES.ATTACK, DICE_FACES.SHIELD];
+// 初期ダイス列は initialDice(n)（マスターデータ側で定義）に統一。旧 INITIAL_DICE は廃止。
+
 function Die({
   face,
   phase,
-  anim = 'toss'
+  anim = 'toss',
+  lit = false
 }) {
-  const cls = "die " + (anim === 'toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '');
+  const cls = "die " + (anim === 'toss' ? 'toss ' : '') + (phase === 'spinning' ? 'spinning' : phase === 'landed' ? 'landed' : '') + (lit ? ' combo-lit' : '');
   return /*#__PURE__*/React.createElement("div", {
     className: cls
   }, /*#__PURE__*/React.createElement(Img, {
@@ -1204,6 +1413,35 @@ const REST3D = {
     y: 0
   }
 };
+// 俯瞰（桃鉄式）カメラ専用のRESTテーブル：出目を「天面」に向ける回転目標。
+// BonusDie3D は正面カメラ(.d3-tilt)のままのため、上の REST3D を使い続ける（このテーブルは Die3D 専用）。
+const REST3D_TOP = {
+  top: {
+    x: 0,
+    y: 0
+  },
+  front: {
+    x: 90,
+    y: 0
+  },
+  back: {
+    x: 90,
+    y: 180
+  },
+  right: {
+    x: 90,
+    y: -90
+  },
+  left: {
+    x: 90,
+    y: 90
+  },
+  bottom: {
+    x: 180,
+    y: 0
+  }
+};
+const DIE3D_YAW = 32; // 全ダイス共通・固定のヨー整列角（index_3d.html の実測値と同一）
 const SLOT_FOR_ID = {
   coin: 'front',
   attack: 'top',
@@ -1215,15 +1453,17 @@ const norm360 = a => (a % 360 + 360) % 360;
 function Die3D({
   face,
   rollKey,
-  index = 0
+  index = 0,
+  lit = false
 }) {
   const cubeRef = useRef(null),
     launchRef = useRef(null);
   const rot = useRef(null);
   // idle は各ダイスで違う役を見せる：小判(front)/スティール(right)/シールド(left)。
-  // 着地時と同じ「面を正面に向ける」向き＝読みやすい。top/bottom(rotateX±90)は真横に潰れるので使わない。
+  // 天面基準のRESTなので、この面が天面（カメラに最も大きく見える面）に来る。
+  // 4〜5個ダイスでも安全に3方向を巡回させるため、常に配列長(3)で割る（diceCountで割ると4番目以降が out-of-range になる）。
   if (rot.current === null) {
-    const s = REST3D[['front', 'right', 'left'][index % 3]];
+    const s = REST3D_TOP[['front', 'right', 'left'][index % 3]];
     rot.current = {
       rx: s.x,
       ry: s.y
@@ -1235,9 +1475,9 @@ function Die3D({
   }, []);
   useEffect(() => {
     if (!rollKey) return; // 初期表示ではロールしない
-    const rest = REST3D[SLOT_FOR_ID[face.id] || 'front'];
-    const spinsX = 2 + Math.floor(Math.random() * 3); // 2〜4回転
-    const spinsY = 3 + Math.floor(Math.random() * 3); // 3〜5回転
+    const rest = REST3D_TOP[SLOT_FOR_ID[face.id] || 'front'];
+    const spinsX = 1 + Math.floor(Math.random() * 2); // 1〜2回転
+    const spinsY = 2 + Math.floor(Math.random() * 2); // 2〜3回転
     const rx0 = rot.current.rx,
       ry0 = rot.current.ry;
     const rxE = rx0 + norm360(rest.x - rx0) + spinsX * 360;
@@ -1248,7 +1488,7 @@ function Die3D({
       rx: rxE,
       ry: ryE
     };
-    const dur = 1.3;
+    const dur = 0.9; // 俯瞰演出：1個あたり0.9秒
     const c = cubeRef.current,
       l = launchRef.current;
     if (!c || !l) return;
@@ -1266,16 +1506,21 @@ function Die3D({
       void l.offsetWidth;
       l.style.animation = `d3launch ${dur}s linear both`;
     };
-    const t = setTimeout(start, index * 150); // 左→右に順番に発射
+    const t = setTimeout(start, index * 50); // 左→右に50ms間隔で発射
     return () => clearTimeout(t);
   }, [rollKey]);
   return /*#__PURE__*/React.createElement("div", {
-    className: "d3-slot"
+    className: "d3-slot" + (index % 2 === 0 ? ' zigzag-a' : ' zigzag-b') + (lit ? ' combo-lit' : '')
   }, /*#__PURE__*/React.createElement("div", {
     className: "d3-launch",
     ref: launchRef
   }, /*#__PURE__*/React.createElement("div", {
-    className: "d3-tilt"
+    className: "d3-cam-tilt"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "d3-yaw",
+    style: {
+      transform: `rotateY(${DIE3D_YAW}deg)`
+    }
   }, /*#__PURE__*/React.createElement("div", {
     className: "d3-cube",
     ref: cubeRef
@@ -1288,7 +1533,7 @@ function Die3D({
     fallback: /*#__PURE__*/React.createElement("span", {
       className: "d3-emo"
     }, FACE_EMOJI[f.id])
-  })))))));
+  }))))))));
 }
 function RollButton({
   disabled,
@@ -1390,8 +1635,8 @@ const SIDE_LEFT = [{
   label: '村建設'
 }, {
   screen: 'characters',
-  img: 'char/Char_maneki_1.png',
-  emoji: '🥷',
+  img: 'ui/Icon_Companion.png',
+  emoji: '🐾',
   label: '仲間'
 }, {
   screen: 'collection',
@@ -1420,6 +1665,11 @@ const SIDE_RIGHT = [{
   img: 'ui/Icon_Invite.png',
   emoji: '👥',
   label: '招待'
+}, {
+  screen: 'settings',
+  img: 'ui/Icon_Settings.png',
+  emoji: '⚙️',
+  label: '設定'
 }];
 function SideRail({
   side,
@@ -1460,13 +1710,14 @@ function MainRoll({
   showToast,
   go,
   onZorume,
+  onCombo,
   onCardDrop,
   dropCard,
   onMenu,
   onShop,
   tickets,
-  bet = 1,
-  setBet,
+  diceCount = DICE_MIN,
+  setDiceCount,
   night,
   onToggleNight,
   auto,
@@ -1490,8 +1741,8 @@ function MainRoll({
   const [railPulse, setRailPulse] = useState(0); // カードUI（左レール）到着パルスのキー
   const cardFlyRef = useRef(null); // 飛翔カードのDOM参照（着地座標計算用）
   const flyTimers = useRef([]);
-  const [dice, setDice] = useState(INITIAL_DICE);
-  const [phases, setPhases] = useState(['idle', 'idle', 'idle']);
+  const [dice, setDice] = useState(() => initialDice(diceCount));
+  const [phases, setPhases] = useState(() => idlePhases(diceCount));
   const [isRolling, setIsRolling] = useState(false);
   const [lastGain, setLastGain] = useState(0);
   const [gainKey, setGainKey] = useState(0);
@@ -1504,6 +1755,9 @@ function MainRoll({
     key: 0
   });
   const [showDebug, setShowDebug] = useState(() => new URLSearchParams(window.location.search).has('debugopen'));
+  const [noPodium, setNoPodium] = useState(false); // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
+  const [comboFx, setComboFx] = useState(null); // 合体役ハイライト：{ cc, indices:Set<number> }（resolveRollのcombo分岐で設定）
+  const [comboCutin, setComboCutin] = useState(null); // 合体役カットイン：'assault'|'goldrule'|null（表示中はonComboを呼ばずisRollingも解放しない）
   // auto は App 側で保持（ボーナス/アタック等で MainRoll がアンマウントされても状態を維持する）
 
   // 常時ループの桜吹雪演出：マウント時に一度だけランダム生成（再レンダリングでリセットさせない）
@@ -1525,12 +1779,21 @@ function MainRoll({
   const doRollRef = useRef(null); // stable handle so the auto-loop effect doesn't churn with game identity
   const rollsRef = useRef(game.rolls);
   rollsRef.current = game.rolls;
-  const betRef = useRef(1);
-  betRef.current = bet; // ロールポイント倍率（報酬計算で参照）
+  const diceCountRef = useRef(diceCount);
+  diceCountRef.current = diceCount; // 消費算出用（auto-loopの残りロール判定でのみ参照）
   const rollAnimRef = useRef(rollAnim);
   rollAnimRef.current = rollAnim;
   const [roll3dKey, setRoll3dKey] = useState(0); // 3D演出のロール再生トリガー
-
+  // ダイス数を昇格/降格させてから強制的に振りたい出目（デバッグ/デモ用）。setDiceCount後の再描画で
+  // diceCountが実際に目的値へ揃ったことをuseEffectの依存配列で確認してから消費する（setTimeout(0)の暗黙順序に依存しない）。
+  const pendingForcedRef = useRef(null); // {faces, delay}
+  useEffect(() => {
+    const p = pendingForcedRef.current;
+    if (!p || p.faces.length !== diceCount) return;
+    pendingForcedRef.current = null;
+    const t = setTimeout(() => doRollRef.current && doRollRef.current(p.faces), p.delay || 0);
+    return () => clearTimeout(t);
+  }, [diceCount]);
   const clearSpins = () => {
     spinIntervals.current.forEach(clearInterval);
     spinIntervals.current = [];
@@ -1539,6 +1802,14 @@ function MainRoll({
     clearSpins();
     flyTimers.current.forEach(clearTimeout);
   }, []);
+
+  // ダイス数（3/4/5）切替時：ロール中でなければアイドル列を再構築（サイズ違いの配列を残さない）
+  useEffect(() => {
+    if (isRolling) return;
+    setDice(initialDice(diceCount));
+    setPhases(idlePhases(diceCount));
+  }, [diceCount]); // eslint-disable-line
+
   const fireFx = useCallback(partial => {
     fxKeyRef.current += 1;
     setFx({
@@ -1550,16 +1821,20 @@ function MainRoll({
     });
   }, []);
 
-  // ロール完了＝コイン噴き上げ演出の終了時に呼ぶ（オートロールはここで次へ進む）
+  // ロール解放（次ロールへ進める）処理。通常役は判定直後に自前のタイマーで早期に呼び、
+  // JP等の特殊役はコイン噴き上げ演出（CoinParticles）の終了 onDone から呼ぶ（coinGateRefで切替）。
   const finishRoll = useCallback(() => {
-    setPhases(['idle', 'idle', 'idle']);
+    setPhases(idlePhases(diceCount));
     rollingRef.current = false;
     setIsRolling(false);
     setTimeout(() => {
       setMood('idle');
       setSpeech('');
     }, 400);
-  }, []);
+  }, [diceCount]);
+  // true の間だけ CoinParticles の onDone(1350ms後) が finishRoll を呼ぶ（JP等の特殊役用ゲート）。
+  // 通常役では false のままにし、CoinParticles の演出は解放をブロックしない（見た目だけ流れ続ける）。
+  const coinGateRef = useRef(false);
 
   // 獲得カードを別位置に出し、少し見せてから左レールの「カード」ボタンへ飛ばす。着地でボタンをパルス。
   const flyKeyRef = useRef(0);
@@ -1597,33 +1872,37 @@ function MainRoll({
   }, []);
   const doRoll = useCallback(forced => {
     if (rollingRef.current) return;
-    if (game.rolls < game.bet) {
+    const n = diceCount;
+    if (game.rolls < game.rollCost) {
       showToast('ロールが足りません');
       setAuto(false);
       return;
     }
     rollingRef.current = true;
     setIsRolling(true);
+    setComboFx(null); // 前回の合体ハイライトが残っていれば消す（goldrule閉じ直後の連打など）
+    setComboCutin(null); // 前回のカットインが残っていれば消す
     if (Math.random() < freeRollRef.current) {
       showToast('🐾 無料ロール！');
     } // 招き猫系：消費なし
-    else game.useRolls(game.bet); // ロールポイント倍率ぶん消費
+    else game.useRolls(game.rollCost); // ダイス数ぶんのロールポイントを消費（3個=3/4個=4/5個=5）
     setMood('excited');
     setSpeech('');
     SFX.roll();
-    const results = Array.isArray(forced) && forced.length === 3 ? forced : decideHand();
+    const results = Array.isArray(forced) && forced.length === n ? forced : decideHand(n);
     if (rollAnimRef.current === '3d') {
       // 3D：面の高速切替はせず、立方体が結果面へ転がって着地。着地に合わせて判定。
       clearSpins();
       setDice(results);
-      setPhases(['spinning', 'spinning', 'spinning']);
+      setPhases(Array(n).fill('spinning'));
       setRoll3dKey(k => k + 1);
-      setTimeout(() => resolveRoll(results), 1700); // stagger + 転がり + 着地ぶん
+      // 俯瞰演出：50ms×(n-1)のstagger + 1個0.9秒 + 着地後の余裕150ms（トータル約1秒台）
+      setTimeout(() => resolveRoll(results), (n - 1) * 50 + 900 + 150);
       return;
     }
-    setPhases(['spinning', 'spinning', 'spinning']);
+    setPhases(Array(n).fill('spinning'));
     clearSpins();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < n; i++) {
       const id = setInterval(() => setDice(prev => {
         const nx = [...prev];
         nx[i] = rollFace();
@@ -1631,7 +1910,9 @@ function MainRoll({
       }), 80);
       spinIntervals.current.push(id);
     }
-    const stopTimes = [520, 680, 840];
+    const stopTimes = Array.from({
+      length: n
+    }, (_, i) => 520 + i * 160);
     results.forEach((res, i) => setTimeout(() => {
       clearInterval(spinIntervals.current[i]);
       setDice(prev => {
@@ -1645,18 +1926,35 @@ function MainRoll({
         return nx;
       });
     }, stopTimes[i]));
-    setTimeout(() => resolveRoll(results), 900);
-  }, [game, showToast]);
+    setTimeout(() => resolveRoll(results), stopTimes[n - 1] + 60);
+  }, [game, showToast, diceCount]);
   const resolveRoll = useCallback(results => {
-    const {
-      isZorume,
-      isJackpotCombo,
-      faceId
-    } = checkZorume(results);
-    const gain = calculateCoins(results, game.stage) * betRef.current;
+    const ev = evaluateHand(results);
     SFX.land();
-    if (isZorume) {
-      // hand off to the zorume overlay + flow router
+    if (ev.kind === 'combo') {
+      // 強襲／黄金律：両役の効果＋一律×1.15。参加ダイス（roles）を発光リング＋ステージオーラでハイライトしつつ、
+      // ぞろ目のZorumeOverlayと同格の「見得」（ComboCutin、約1.3秒）をはさんでからonComboを呼ぶ。
+      // カットイン表示中はisRollingを解放しない（＝二重ロール防止。オートループもisRolling/pausedで待機する）。
+      //  - 強襲：カットイン終了後にonCombo('assault')→画面遷移でMainRollがアンマウントされるため、
+      //          そのタイミング以降はこのコンポーネント内でsetStateしない（onComboCutinDone側で担保）。
+      //  - 黄金律：この画面に残るため、カットイン終了後に必ず解放する（comboFxも忘れずクリア）。
+      const idx = new Set();
+      results.forEach((f, i) => {
+        if (ev.roles.includes(f.id)) idx.add(i);
+      });
+      setComboFx({
+        cc: ev.comboId === 'assault' ? '#DC2626' : '#059669',
+        indices: idx
+      });
+      setMood('excited');
+      setSpeech(ev.comboId === 'assault' ? '強襲！！' : '黄金律！！');
+      SFX.zorume();
+      setComboCutin(ev.comboId);
+      return;
+    }
+    if (ev.kind === 'zorome') {
+      const faceId = ev.faceId;
+      const k = ev.count[faceId]; // 成立面数（MVP=ダイス数）
       setMood('zorume');
       setSpeech(FACE_LABEL[faceId] + 'ぞろ目！');
       SFX.zorume();
@@ -1665,12 +1963,13 @@ function MainRoll({
         setIsRolling(false);
         setMood('idle');
         setSpeech('');
-        setPhases(['idle', 'idle', 'idle']);
+        setPhases(idlePhases(diceCount));
       }, 1300);
-      onZorume(faceId);
+      onZorume(faceId, k);
       return;
     }
-    if (isJackpotCombo) {
+    const gain = calculateCoins(results, game.stage);
+    if (ev.kind === 'jpcombo') {
       const bonus = gain + 3000;
       fireFx({
         jackpot: true
@@ -1681,14 +1980,17 @@ function MainRoll({
       addCoins(bonus);
       setLastGain(bonus);
       setGainKey(k => k + 1);
+      coinGateRef.current = true; // JPは特殊役：従来どおりコイン噴き上げ終了(1350ms)までロールを解放しない
       setCoinSpray(k => k + 1);
       showToast('ジャックポットコンボ！ +' + fmt(bonus) + ' 🪙');
+      // ロール解放はコイン噴き上げの onDone (finishRoll) が行う（特殊役のゲートは維持）。
     } else {
       const coinCount = results.filter(r => r.id === 'coin').length;
       const shieldCount = results.filter(r => r.id === 'shield').length;
       addCoins(gain);
       setLastGain(gain);
       setGainKey(k => k + 1);
+      coinGateRef.current = false; // 通常役：コイン噴き上げは次ロールをブロックしない（見た目だけ並行再生）
       if (gain > 0) {
         setCoinSpray(k => k + 1);
         SFX.coin();
@@ -1704,15 +2006,38 @@ function MainRoll({
         const c = dropCard();
         startCardFly(c);
       }, 500); // カード排出率 35%→10%（だるま等の cardDropBonus は加算）
+      // 通常役はテンポ優先：判定から200ms後に早期解放し、次ロールを待たせない
+      // （コイン噴き上げ演出はCoinParticlesが並行して最後まで再生を続ける＝onDoneはここでは使わない）。
+      // 200ms＝ダイス数5・3D演出の最も遅いケースでも「ロール開始→次ロール可能」が約1.5秒以内に収まるよう実測調整。
+      setTimeout(() => finishRoll(), 200);
     }
-    // ロール解放はコイン噴き上げの onDone (finishRoll) が行う。ここでは解放しない（次ロールが演出を待つ）。
-  }, [game.stage, addCoins, grantShields, fireFx, showToast, onZorume, dropCard, startCardFly, finishRoll]);
+  }, [game.stage, addCoins, grantShields, fireFx, showToast, onZorume, dropCard, startCardFly, finishRoll, diceCount]);
+
+  // ComboCutin終了時に呼ばれる：ここで初めてonComboを叩き、画面遷移／JPオーバーレイに合流する。
+  // 強襲はこの呼び出し後にMainRollがアンマウントされるため、onCombo('assault')より後にsetStateしないこと。
+  const onComboCutinDone = useCallback(() => {
+    const comboId = comboCutin;
+    setComboCutin(null);
+    if (comboId === 'assault') {
+      onCombo('assault'); // 画面遷移でアンマウント。以降このコールバック内でsetStateしない。
+      return;
+    }
+    if (comboId === 'goldrule') {
+      rollingRef.current = false;
+      setIsRolling(false);
+      setMood('idle');
+      setSpeech('');
+      setPhases(idlePhases(diceCount));
+      setComboFx(null);
+      onCombo('goldrule'); // MultiplierOverlay（JP演出）へ合流
+    }
+  }, [comboCutin, onCombo, diceCount]);
   doRollRef.current = doRoll;
   // auto-roll loop — depends only on auto/isRolling (NOT on doRoll/game identity),
   // so the 350ms timer isn't reset by App re-renders (e.g. coin count-up animation).
   useEffect(() => {
     if (!auto || isRolling || paused) return; // メニュー/ジャックポット等の演出中は一時停止（閉じたら再開）
-    if (rollsRef.current < betRef.current) {
+    if (rollsRef.current < DICE_COST[diceCountRef.current]) {
       setAuto(false);
       return;
     }
@@ -1736,7 +2061,7 @@ function MainRoll({
     return () => clearInterval(id);
   }, [game.rolls, game.rollsMax]);
 
-  // demo hook (?demo=win|coin|zorume|jackpot|shield)
+  // demo hook (?demo=win|coin|zorume|jackpot|shield|assault|goldrule)
   const demoFired = useRef(false);
   useEffect(() => {
     if (demoFired.current) return;
@@ -1749,13 +2074,26 @@ function MainRoll({
       shield: [F.SHIELD, F.SHIELD, F.SHIELD],
       jackpot: [F.JACKPOT, F.JACKPOT, F.COIN],
       coin: [F.COIN, F.COIN, F.COIN],
-      win: [F.COIN, F.COIN, F.ATTACK]
+      win: [F.COIN, F.COIN, F.ATTACK],
+      assault: [F.ATTACK, F.ATTACK, F.STEAL, F.STEAL],
+      goldrule: [F.COIN, F.COIN, F.JACKPOT, F.JACKPOT]
     };
     if (!map[demo]) return;
     demoFired.current = true;
-    const t = setTimeout(() => doRoll(map[demo]), 900);
+    const faces = map[demo];
+    if (faces.length !== diceCount && setDiceCount) {
+      // 合体役デモ（4個構成）は昇格させ、diceCountが実際に揃った時点でpendingForcedRef側の効果が振る（900ms後）
+      pendingForcedRef.current = {
+        faces,
+        delay: 900
+      };
+      setDiceCount(faces.length);
+      return;
+    }
+    const t = setTimeout(() => doRollRef.current && doRollRef.current(faces), 900);
     return () => clearTimeout(t);
-  }, [doRoll]);
+  }, []); // eslint-disable-line — 初回のみ・doRollRef経由で最新のdoRollを使う
+
   const pct = Math.max(0, Math.min(100, game.rolls / game.rollsMax * 100));
   return /*#__PURE__*/React.createElement("div", {
     className: "screen main-screen",
@@ -1840,7 +2178,11 @@ function MainRoll({
     className: "opp-name"
   }, game.opponent.name)), /*#__PURE__*/React.createElement("div", {
     className: "opp-coins"
-  }, "💰 ", fmt(game.opponent.coins))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "oc-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "💰")
+  }), " ", fmt(game.opponent.coins))), /*#__PURE__*/React.createElement("div", {
     className: "gain-banner " + (gainKey ? 'pop' : ''),
     key: gainKey
   }, /*#__PURE__*/React.createElement("span", {
@@ -1851,29 +2193,36 @@ function MainRoll({
   })), /*#__PURE__*/React.createElement("div", {
     className: "dice-area"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "dice-stage"
+    className: "dice-stage" + (comboFx ? ' combo' : '') + (noPodium ? ' no-podium' : ''),
+    style: comboFx ? {
+      '--cc': comboFx.cc
+    } : undefined
   }, /*#__PURE__*/React.createElement("div", {
-    className: "dice-row" + (rollAnim === '3d' ? ' d3' : '')
+    className: "dice-row" + (rollAnim === '3d' ? ' d3' : '') + (diceCount === 4 ? ' n4' : diceCount === 5 ? ' n5' : '')
   }, rollAnim === '3d' ? dice.map((f, i) => /*#__PURE__*/React.createElement(Die3D, {
     key: i,
     face: f,
     rollKey: roll3dKey,
-    index: i
+    index: i,
+    lit: !!comboFx && comboFx.indices.has(i)
   })) : dice.map((f, i) => /*#__PURE__*/React.createElement(Die, {
     key: i,
     face: f,
     phase: phases[i],
-    anim: rollAnim
+    anim: rollAnim,
+    lit: !!comboFx && comboFx.indices.has(i)
   }))))), /*#__PURE__*/React.createElement("button", {
     className: "bet-toggle",
     disabled: isRolling,
     onClick: () => {
       SFX.tap();
-      setBet && setBet(b => b % 3 + 1);
+      setDiceCount && setDiceCount(c => c >= DICE_MAX ? DICE_MIN : c + 1);
     }
-  }, "×", bet, " ", /*#__PURE__*/React.createElement("span", {
-    className: "bt-ico"
-  }, "🎲")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Dice.png',
+    className: "bt-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎲")
+  }), diceCount, "個"), /*#__PURE__*/React.createElement("div", {
     className: "energy-wrap"
   }, /*#__PURE__*/React.createElement("div", {
     className: "energy-top"
@@ -1882,10 +2231,10 @@ function MainRoll({
   }, /*#__PURE__*/React.createElement("button", {
     className: "free-roll-btn",
     onClick: () => {
-      grantRolls && grantRolls(5);
-      showToast('🎲 ロール +5！');
+      grantRolls && grantRolls(15);
+      showToast('🎲 ロール +15！');
     }
-  }, "🎬 無料+5"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, game.rolls), " / ", game.rollsMax))), /*#__PURE__*/React.createElement("div", {
+  }, "🎬 無料+15"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, game.rolls), " / ", game.rollsMax))), /*#__PURE__*/React.createElement("div", {
     className: "energy-track"
   }, /*#__PURE__*/React.createElement("div", {
     className: "energy-fill",
@@ -1897,7 +2246,7 @@ function MainRoll({
   }, "次の補充: ", refill)), /*#__PURE__*/React.createElement("div", {
     className: "bottom-dock"
   }, /*#__PURE__*/React.createElement(RollButton, {
-    disabled: isRolling || game.rolls < bet,
+    disabled: isRolling || game.rolls < game.rollCost,
     onRoll: doRoll,
     auto: auto,
     onToggleAuto: setAuto
@@ -1910,7 +2259,10 @@ function MainRoll({
     fallback: /*#__PURE__*/React.createElement("div", null)
   })), coinSpray > 0 && /*#__PURE__*/React.createElement(CoinParticles, {
     key: 'cp' + coinSpray,
-    onDone: finishRoll
+    onDone: coinGateRef.current ? finishRoll : undefined
+  }), comboCutin && /*#__PURE__*/React.createElement(ComboCutin, {
+    comboId: comboCutin,
+    onComplete: onComboCutinDone
   }), /*#__PURE__*/React.createElement("button", {
     className: "debug-fab",
     onClick: () => setShowDebug(v => !v),
@@ -1925,13 +2277,30 @@ function MainRoll({
     disabled: isRolling,
     onClick: () => {
       setShowDebug(false);
-      doRoll(h.faces || undefined);
+      const isPureZorome = h.faces && h.faces.every(f => f.id === h.faces[0].id);
+      if (isPureZorome && h.faces.length !== diceCount) {
+        // ぞろ目系は現在のdiceCount長へパディング（k=diceCountで検証可能。diceCount自体は変えない）
+        doRoll(Array(diceCount).fill(h.faces[0]));
+      } else if (h.faces && h.faces.length !== diceCount && setDiceCount) {
+        // 強襲/黄金律など4/5個構成の役はダイス数を自動で合わせてから振る。
+        // diceCountが実際に揃った時点（[diceCount]のuseEffect）でpendingForcedRef側が消費して振る。
+        pendingForcedRef.current = {
+          faces: h.faces,
+          delay: 0
+        };
+        setDiceCount(h.faces.length);
+      } else {
+        doRoll(h.faces || undefined);
+      }
     }
   }, h.label)), onToggleRollAnim && /*#__PURE__*/React.createElement("button", {
     className: "debug-item",
     disabled: isRolling,
     onClick: onToggleRollAnim
-  }, "🎬 ダイス演出: ", rollAnim === '3d' ? '3D立体' : rollAnim === 'toss' ? '飛ばし（下から）' : '回転（従来）'), onRerollShop && /*#__PURE__*/React.createElement("button", {
+  }, "🎬 ダイス演出: ", rollAnim === '3d' ? '3D立体' : rollAnim === 'toss' ? '飛ばし（下から）' : '回転（従来）'), /*#__PURE__*/React.createElement("button", {
+    className: "debug-item",
+    onClick: () => setNoPodium(v => !v)
+  }, "🍽️ 台座: ", noPodium ? 'OFF' : 'ON'), onRerollShop && /*#__PURE__*/React.createElement("button", {
     className: "debug-item",
     onClick: () => {
       onRerollShop();
@@ -1950,6 +2319,90 @@ function MainRoll({
     className: "debug-close",
     onClick: () => setShowDebug(false)
   }, "閉じる")));
+}
+
+/* 合体役（強襲/黄金律）成立時のカットイン。ZorumeOverlay/ScrollBannerと同じ「見得」のリズム（約1.3秒）だが、
+   全画面を覆う不透明背景は敷かない（下のdice-stageに乗った合体ハイライト＝comboFxの発光リング/ステージオーラを
+   隠さないため）。MainRoll内にオーバーレイ表示し、終了後にonComboCutinDoneがonComboへ合流して画面遷移／JP演出を進める。 */
+const COMBO_CUTIN_DEF = {
+  assault: {
+    title: '強襲！！',
+    grad: `linear-gradient(135deg, ${FACE_COLOR.attack}, ${FACE_COLOR.steal})`,
+    faces: ['attack', 'steal']
+  },
+  goldrule: {
+    title: '黄金律！！',
+    grad: `linear-gradient(135deg, var(--gold-light), ${FACE_COLOR.jackpot})`,
+    faces: ['coin', 'jackpot']
+  }
+};
+function ComboCutin({
+  comboId,
+  onComplete
+}) {
+  const [phase, setPhase] = useState('flash'); // flash → show → transition
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase('show'), 220);
+    const t2 = setTimeout(() => setPhase('transition'), 900);
+    const t3 = setTimeout(() => onComplete(), 1300);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [comboId, onComplete]);
+  const def = COMBO_CUTIN_DEF[comboId];
+  if (!def) return null;
+  const [faceA, faceB] = def.faces;
+  const imgA = DICE_FACES[faceA.toUpperCase()].image,
+    imgB = DICE_FACES[faceB.toUpperCase()].image;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "combo-cutin",
+    style: {
+      '--cc': FACE_COLOR[faceA]
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "cc-flash"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "cc-scrim"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "cc-banner"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/UI_Scroll.png',
+    className: "scroll-bg",
+    fallback: /*#__PURE__*/React.createElement("div", {
+      className: "scroll-bg-fallback"
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "scroll-content cc-content"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "cc-flank a"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: imgA,
+    className: "cc-flank-ico",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "face-emoji"
+    }, FACE_EMOJI[faceA])
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "cc-text"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "scroll-title gold-text"
+  }, def.title), /*#__PURE__*/React.createElement("div", {
+    className: "cc-badge",
+    style: {
+      background: def.grad
+    }
+  }, "合体役 ×1.15")), /*#__PURE__*/React.createElement("div", {
+    className: "cc-flank b"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: imgB,
+    className: "cc-flank-ico",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "face-emoji"
+    }, FACE_EMOJI[faceB])
+  })))), phase === 'transition' && /*#__PURE__*/React.createElement("div", {
+    className: "z-next"
+  }, "つぎへ →"));
 }
 
 /* ============================================================
@@ -2032,7 +2485,11 @@ function ZorumeOverlay({
     style: {
       background: color
     }
-  }, FACE_EMOJI[faceId], " ", FACE_LABEL[faceId], " ぞろ目"))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: FACE_IMG_BY_ID[faceId],
+    className: "zb-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, FACE_EMOJI[faceId])
+  }), " ", FACE_LABEL[faceId], " ぞろ目"))), /*#__PURE__*/React.createElement("div", {
     className: "z-chara"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'char/Chara_NinjaDog.png',
@@ -2117,23 +2574,23 @@ function BonusDie3D({
 function BonusRoll({
   trigger,
   stage = 3,
-  bet = 1,
+  k = 3,
   onComplete
 }) {
-  const table = BONUS_DICE_TABLES[trigger] || BONUS_DICE_TABLES.coin;
+  const table = trigger === 'coin' ? coinBonusTableForK(k) : BONUS_DICE_TABLES[trigger] || BONUS_DICE_TABLES.coin;
   const [phase, setPhase] = useState('rolling'); // rolling → result
   const [result, setResult] = useState(null);
   const [rollKey, setRollKey] = useState(0);
   const timerRef = useRef(null);
   const color = FACE_COLOR[trigger];
   const base = coinBaseForStage(stage);
-  const coinGain = result ? trigger === 'coin' ? base * result.multiplier * bet : trigger === 'jackpot' ? (base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * bet : 0 : 0;
+  const coinGain = result ? trigger === 'coin' ? base * result.multiplier : trigger === 'jackpot' ? base * result.coinMultiplier + (result.treasure ? 50000 : 0) : 0 : 0;
   const gainDisplay = useCountUp(coinGain, 900, phase === 'result' && coinGain > 0);
   useEffect(() => () => clearTimeout(timerRef.current), []);
   // 入場後まもなく自動で振る：金ダイスが跳ね上がって転がり、当選倍率の面で着地
   useEffect(() => {
     const t = setTimeout(() => {
-      const res = rollBonusDice(trigger);
+      const res = table[Math.floor(Math.random() * table.length)];
       setResult(res);
       setRollKey(1);
       SFX.roll();
@@ -2162,7 +2619,12 @@ function BonusRoll({
     }
   }, /*#__PURE__*/React.createElement("span", {
     className: "trigger-emoji"
-  }, FACE_EMOJI[trigger], FACE_EMOJI[trigger], FACE_EMOJI[trigger]), /*#__PURE__*/React.createElement("span", null, FACE_LABEL[trigger], " ぞろ目")), /*#__PURE__*/React.createElement("div", {
+  }, [0, 1, 2].map(i => /*#__PURE__*/React.createElement(Img, {
+    key: i,
+    src: FACE_IMG_BY_ID[trigger],
+    className: "tg-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, FACE_EMOJI[trigger])
+  }))), /*#__PURE__*/React.createElement("span", null, FACE_LABEL[trigger], " ぞろ目")), /*#__PURE__*/React.createElement("div", {
     className: "bonus-base"
   }, "倍率の元金 ", /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'ui/Koban_Small.png',
@@ -2170,9 +2632,7 @@ function BonusRoll({
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), " ", /*#__PURE__*/React.createElement("b", {
     className: "gold-text"
-  }, fmt(base)), bet > 1 && /*#__PURE__*/React.createElement("span", {
-    className: "bb-bet"
-  }, "（×", bet, "ロールポイント）")), /*#__PURE__*/React.createElement("div", {
+  }, fmt(base))), /*#__PURE__*/React.createElement("div", {
     className: "bonus-dice-wrap"
   }, phase === 'result' && /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'effect/Effect_Jackpot.png',
@@ -2197,9 +2657,7 @@ function BonusRoll({
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
   }), fmt(base)), /*#__PURE__*/React.createElement("span", {
     className: "br-op"
-  }, "× ", result.multiplier), bet > 1 && /*#__PURE__*/React.createElement("span", {
-    className: "br-op"
-  }, "× ", bet)), /*#__PURE__*/React.createElement("div", {
+  }, "× ", result.multiplier)), /*#__PURE__*/React.createElement("div", {
     className: "br-eq gold-text"
   }, "= +", fmt(gainDisplay), " 🪙")), phase !== 'result' ? /*#__PURE__*/React.createElement("div", {
     className: "bonus-status"
@@ -2300,8 +2758,8 @@ function AttackSelect({
   opponent,
   bonusResult,
   stage = 3,
+  k = 3,
   ignoreShield = false,
-  onCancel,
   onResolve
 }) {
   // opponent's village（建設画面と同じ見た目）。建物を直接タップして攻撃。
@@ -2313,26 +2771,31 @@ function AttackSelect({
       garden: 1
     }
   }));
-  const [hit, setHit] = useState(null); // 攻撃中の建物
+  const [hit, setHit] = useState(null); // 攻撃中の建物（起点タップ）
+  const [hitGroup, setHitGroup] = useState([]); // 起点タップ＋自動巻き込み分（k連動、破壊はまとめて1タップ）
   const [phase, setPhase] = useState(null); // 'coin' | 'shield' | 'broken'
   const [broken, setBroken] = useState([]); // 破壊済みの建物id
   const rate = Math.round((bonusResult?.coinRate ?? 0.25) * 100) || 25;
+  const destroyCount = ATTACK_DESTROY_BY_K[k] || 1; // k=3→1棟、4→2棟、5→3棟（まとめて1タップで破壊）
+
   const pick = it => {
     if (hit) return; // 1回のみ攻撃
     const success = opponent.shields <= 0 || ignoreShield;
     setHit(it);
     if (success) {
+      // タップ棟＋価値（建物レベル）降順で残り(destroyCount-1)棟を自動巻き込み
+      const others = village.filter(v => v.id !== it.id).sort((a, b) => b.level - a.level);
+      setHitGroup([it.id, ...others.slice(0, destroyCount - 1).map(v => v.id)]);
       setPhase('burst');
-      SFX.attack();
-    } // まず派手なインパクト → コイン → 破壊
-    else {
+      SFX.attack(); // まず派手なインパクト → コイン → 破壊
+    } else {
       setPhase('shield');
       SFX.shield();
       setTimeout(() => onResolve(it, false), 760);
     }
   };
   const onSprayDone = () => {
-    setBroken(b => hit ? [...b, hit.id] : b); // 建物を破壊状態へ
+    setBroken(b => [...new Set([...b, ...hitGroup])]); // 巻き込み含めまとめて破壊状態へ
     setPhase('broken');
     SFX.coin();
     setTimeout(() => onResolve(hit, true), 700); // 破壊状態を見せてから結果へ
@@ -2344,19 +2807,13 @@ function AttackSelect({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "mini-bar"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "ghost-btn",
-    onClick: onCancel
-  }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     className: "foe-coins"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'ui/Koban_Small.png',
     className: "fc-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "💰")
-  }), fmt(opponent.coins)), /*#__PURE__*/React.createElement("button", {
-    className: "ghost-btn danger",
-    onClick: onCancel
-  }, "逃げる")), /*#__PURE__*/React.createElement(ScrollBanner, {
+  }), fmt(opponent.coins))), /*#__PURE__*/React.createElement(ScrollBanner, {
     title: "攻撃する建物をタップ！",
     className: "attack-title"
   }), /*#__PURE__*/React.createElement("div", {
@@ -2425,7 +2882,7 @@ function AttackSelect({
     className: "predict-frame"
   }, /*#__PURE__*/React.createElement("div", null, "💥 破壊成功時: 相手コインの約 ", /*#__PURE__*/React.createElement("b", null, rate, "%"), " 獲得"), /*#__PURE__*/React.createElement("div", null, "🛡️ シールド時: 相手コインの約 ", /*#__PURE__*/React.createElement("b", null, "7%"), " 獲得"), bonusResult && /*#__PURE__*/React.createElement("div", {
     className: "predict-bonus"
-  }, "ボーナス: ", bonusResult.label, " ダメージ", bonusResult.damage || 0))), /*#__PURE__*/React.createElement("div", {
+  }, "ボーナス: ", bonusResult.label, " 破壊", destroyCount, "棟（1タップ）"))), /*#__PURE__*/React.createElement("div", {
     className: "attack-chara"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'char/Chara_RoboNinja.png',
@@ -2507,17 +2964,221 @@ function AttackResult({
 }
 
 /* ============================================================
+   SCREEN 05B — ASSAULT（合体役「強襲」＝attack×steal専用ミニ画面／StealScreenベースの3タップ選択制）
+   入場時に確定するのは attackFace/aFull/シールド枚数のスナップショットのみ。
+   各棟の略奪額はタップ時にここで stealFromBuilding() を引く（steal本編と同一タイミング）。
+   3タップ後にサマリー（合体×COMBO_K）を約 ASSAULT_SUMMARY_HOLD ms 見せて自動で受け取り／タップでスキップ可。
+   ============================================================ */
+function AssaultScreen({
+  opponentName,
+  opponentCoins = 0,
+  opponentImg = '',
+  stealMult = 1,
+  ignoreShield = false,
+  stage = 3,
+  attackFace,
+  aFull = 0,
+  opponentShields = 0,
+  onReceive
+}) {
+  const [village] = useState(() => themedVillage(stage, {
+    levels: {
+      castle: 3,
+      storehouse: 2,
+      statue: 2,
+      garden: 1
+    }
+  }));
+  const [phase, setPhase] = useState('intro'); // intro → selecting → summary
+  const [picks, setPicks] = useState([]); // {id,label,coinGain,shielded}
+  const [swiping, setSwiping] = useState(null); // 演出中の建物id
+  const shieldsLeftRef = useRef(opponentShields);
+  const doneRef = useRef(false);
+  useEffect(() => {
+    const t = setTimeout(() => setPhase('selecting'), 600);
+    return () => clearTimeout(t);
+  }, []);
+  const pickedIds = picks.map(p => p.id);
+  const pick = it => {
+    if (phase !== 'selecting' || swiping || pickedIds.includes(it.id) || picks.length >= 3) return;
+    setSwiping(it.id);
+    SFX.attack();
+  };
+  // 破壊+略奪演出（StealSwipe流用）が終わった瞬間に略奪額を抽選（stealFromBuilding）＝steal本編と同じタイミング。
+  const finalizeSwipe = it => {
+    const shielded = !ignoreShield && shieldsLeftRef.current > 0;
+    const raw = stealFromBuilding(it).coinGain;
+    const coinGain = Math.round(raw * stealMult * (shielded ? ASSAULT_SHIELD_STEAL_DECAY : 1));
+    if (shielded) shieldsLeftRef.current -= 1;
+    const next = [...picks, {
+      id: it.id,
+      label: it.label,
+      coinGain,
+      shielded
+    }];
+    setPicks(next);
+    setSwiping(null);
+    shielded ? SFX.shield() : SFX.coin();
+    if (next.length >= 3) setTimeout(() => setPhase('summary'), 650);
+  };
+  const S = picks.reduce((s, p) => s + p.coinGain, 0);
+  const unblocked = picks.filter(p => !p.shielded).length; // 防がれずに通った棟数（0〜3）＝追い銭の按分基準
+  const A_eff = Math.round(aFull * unblocked / 3);
+  const total = Math.round((S + A_eff) * COMBO_K);
+  const shieldsConsumed = picks.filter(p => p.shielded).length;
+  const totalDisplay = useCountUp(total, 1000, phase === 'summary');
+  const picksLeft = Math.max(0, 3 - picks.length);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onReceive(total, {
+      shieldsConsumed
+    });
+  };
+  useEffect(() => {
+    if (phase !== 'summary') return;
+    const t = setTimeout(finish, ASSAULT_SUMMARY_HOLD);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen assault-screen",
+    style: {
+      backgroundImage: `url("${IMG}bg/BG_Assault.png")`
+    }
+  }, phase === 'intro' && /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'effect/Effect_Smoke.png',
+    className: "steal-smoke",
+    fallback: /*#__PURE__*/React.createElement("div", {
+      className: "steal-smoke-fallback"
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mini-bar"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe-face"
+  }, /*#__PURE__*/React.createElement(Img, {
+    key: opponentImg,
+    src: opponentImg,
+    className: "sff-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "sff-emoji"
+    }, "👺")
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "steal-foe-info"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "steal-foe-name"
+  }, "⚔️ ", opponentName), /*#__PURE__*/React.createElement("span", {
+    className: "steal-foe-coins"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "fc-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "💰")
+  }), fmt(opponentCoins))))), /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "破壊する城をタップ！",
+    sub: `${'●'.repeat(Math.min(picks.length, 3))}${'○'.repeat(picksLeft)}`
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "castle-stage village"
+  }, village.map(it => {
+    const p = picks.find(x => x.id === it.id);
+    const isSw = swiping === it.id;
+    return /*#__PURE__*/React.createElement("div", {
+      key: it.id,
+      className: "village-item stealable " + (p ? p.shielded ? 'shielded ' : 'destroyed ' : '') + (isSw ? 'swiping ' : ''),
+      style: {
+        left: it.x,
+        top: it.y,
+        width: it.w
+      },
+      onClick: () => pick(it)
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: it.stages[it.level],
+      className: "vi-img",
+      style: {
+        width: it.w
+      },
+      fallback: /*#__PURE__*/React.createElement("span", {
+        className: "vi-emoji"
+      }, it.emoji)
+    }), !p && !isSw && phase === 'selecting' && /*#__PURE__*/React.createElement("div", {
+      className: "target-overlay"
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/UI_Target.png',
+      className: "reticle",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        className: "reticle-fallback"
+      }, "◎")
+    })), isSw && /*#__PURE__*/React.createElement(FrameAnim, {
+      name: "effect/StealSwipe",
+      count: 7,
+      interval: 80,
+      className: "stealfx",
+      onDone: () => finalizeSwipe(it)
+    }), p && !p.shielded && /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'effect/Effect_Rubble.png',
+      className: "vi-rubble",
+      fallback: /*#__PURE__*/React.createElement("div", null)
+    }), p && p.shielded && /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'effect/Effect_Shield.png',
+      className: "vi-shieldfx",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 44
+        }
+      }, "🛡️")
+    }), p && /*#__PURE__*/React.createElement("div", {
+      className: "sc-loot"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "sc-coin gold-text"
+    }, "+", fmt(p.coinGain))), /*#__PURE__*/React.createElement("span", {
+      className: "target-label"
+    }, it.label), p && /*#__PURE__*/React.createElement("span", {
+      className: "steal-check"
+    }, "✓"));
+  })), phase === 'summary' && /*#__PURE__*/React.createElement("div", {
+    className: "steal-summary-overlay",
+    onClick: finish
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "steal-summary",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "ss-row"
+  }, "🥷 略奪: ", /*#__PURE__*/React.createElement("b", null, "+", fmt(S)), "（3棟）"), /*#__PURE__*/React.createElement("div", {
+    className: "ss-row"
+  }, "⚔️ 追い銭: ", /*#__PURE__*/React.createElement("b", null, "+", fmt(A_eff)), "（", unblocked, "/3通過）"), shieldsConsumed > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "ss-row mult"
+  }, "🛡️ ", shieldsConsumed, "棟が防がれた（略奪×", ASSAULT_SHIELD_STEAL_DECAY, "・追い銭按分）"), /*#__PURE__*/React.createElement("div", {
+    className: "ss-row mult"
+  }, "合体 ×", COMBO_K), /*#__PURE__*/React.createElement("div", {
+    className: "ss-total gold-text"
+  }, "= +", fmt(totalDisplay), " 🪙"), /*#__PURE__*/React.createElement("button", {
+    className: "big-btn green-btn",
+    onClick: finish
+  }, "受け取る！"))), /*#__PURE__*/React.createElement("div", {
+    className: "assault-chara"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'char/Chara_NinjaRaider.png',
+    fallback: /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 70
+      }
+    }, "🥷")
+  })));
+}
+
+/* ============================================================
    SCREEN 06 — STEAL
    ============================================================ */
 function StealScreen({
   opponentName,
   opponentCoins = 0,
   opponentImg = '',
-  betMult = 1,
   onReceive,
   stealMult = 1,
   autoLastSpot = false,
   stage = 3,
+  k = 3,
   pieceBonus = 0,
   ownedPieces = {}
 }) {
@@ -2535,6 +3196,7 @@ function StealScreen({
   const [swiping, setSwiping] = useState(null); // 盗み演出中の建物id
   const [boxGot, setBoxGot] = useState(null); // 宝箱GET演出中の建物id
   const [boxRewards, setBoxRewards] = useState([]); // 宝箱の中身（カード or 仲間かけら／同時には出ない）
+  const target = STEAL_TAPS_BY_K[k] || 3; // タップ棟数：k=3→3、k=4/5→4（村は4棟が上限）
 
   useEffect(() => {
     const t = setTimeout(() => setPhase('selecting'), 600);
@@ -2542,14 +3204,14 @@ function StealScreen({
   }, []);
   const pickedIds = picks.map(p => p.id);
   const pick = it => {
-    if (phase !== 'selecting' || swiping || pickedIds.includes(it.id) || picks.length >= 3) return;
+    if (phase !== 'selecting' || swiping || pickedIds.includes(it.id) || picks.length >= target) return;
     setSwiping(it.id);
     SFX.steal(); // 盗む演出 → 完了でコイン確定
   };
-  // 影のくノ一（autoLastSpot）は3件盗んだ後、残り1件も自動で強奪。
+  // 影のくノ一（autoLastSpot）はtarget件盗んだ後、残り1件も自動で強奪（target<4のときのみ。k≥4は既に全棟タップ済みで対象なし＝二重加算しない）。
   const finalizeSwipe = it => {
     let next = [...picks, stealFromBuilding(it)];
-    if (next.length === 3 && autoLastSpot) {
+    if (next.length === target && autoLastSpot && target < 4) {
       const rest = village.find(v => !next.some(p => p.id === v.id));
       if (rest) next = [...next, {
         ...stealFromBuilding(rest),
@@ -2565,7 +3227,7 @@ function StealScreen({
       SFX.jackpot();
       setTimeout(() => setBoxGot(null), 1000);
     }
-    if (next.length >= 3) {
+    if (next.length >= target) {
       // 宝箱の中身を確定（1箱＝カード or 仲間のどちらか一方）。サマリーで演出リビール。
       const rewards = next.filter(p => p.hasBox).map(() => rollStealBoxReward(stage, 0.25, pieceBonus, ownedPieces));
       setBoxRewards(rewards);
@@ -2577,9 +3239,9 @@ function StealScreen({
   };
   const subtotal = picks.reduce((s, r) => s + r.coinGain, 0);
   const boxCount = picks.filter(p => p.hasBox).length; // 宝箱の数＝獲得カード枚数
-  const total = Math.round(subtotal * betMult * stealMult); // ロールポイント(betMult)＋装備キャラ(stealMult)
+  const total = Math.round(subtotal * stealMult * (k >= 5 ? STEAL_K5_MULT : 1)); // 装備キャラ(stealMult) × 5面ボーナス
   const totalDisplay = useCountUp(total, 1000, phase === 'summary');
-  const picksLeft = Math.max(0, 3 - picks.length);
+  const picksLeft = Math.max(0, target - picks.length);
   return /*#__PURE__*/React.createElement("div", {
     className: "screen steal-screen",
     style: {
@@ -2614,12 +3276,9 @@ function StealScreen({
     src: IMG + 'ui/Koban_Small.png',
     className: "fc-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "💰")
-  }), fmt(opponentCoins)))), /*#__PURE__*/React.createElement("button", {
-    className: "ghost-btn danger",
-    onClick: () => onReceive(0)
-  }, "逃げる")), /*#__PURE__*/React.createElement(ScrollBanner, {
+  }), fmt(opponentCoins))))), /*#__PURE__*/React.createElement(ScrollBanner, {
     title: "盗む建物をタップ！",
-    sub: `${'●'.repeat(Math.min(picks.length, 3))}${'○'.repeat(picksLeft)}`,
+    sub: `${'●'.repeat(Math.min(picks.length, target))}${'○'.repeat(picksLeft)}`,
     className: "steal-title"
   }), /*#__PURE__*/React.createElement("div", {
     className: "castle-stage village"
@@ -2694,13 +3353,13 @@ function StealScreen({
     className: "steal-summary"
   }, /*#__PURE__*/React.createElement("div", {
     className: "ss-row"
-  }, autoLastSpot ? '４か所の合計' : '3か所の合計', ": ", /*#__PURE__*/React.createElement("b", null, "+", fmt(subtotal))), autoLastSpot && /*#__PURE__*/React.createElement("div", {
+  }, picks.length, "か所の合計: ", /*#__PURE__*/React.createElement("b", null, "+", fmt(subtotal))), autoLastSpot && target < 4 && /*#__PURE__*/React.createElement("div", {
     className: "ss-row mult"
-  }, "🥷 影のくノ一：最後の1か所も強奪！"), betMult > 1 && /*#__PURE__*/React.createElement("div", {
+  }, "🥷 影のくノ一：最後の1か所も強奪！"), stealMult > 1 && /*#__PURE__*/React.createElement("div", {
     className: "ss-row mult"
-  }, "× ", betMult, "倍（ロールポイント）"), stealMult > 1 && /*#__PURE__*/React.createElement("div", {
+  }, "× ", stealMult, "倍（仲間）"), k >= 5 && /*#__PURE__*/React.createElement("div", {
     className: "ss-row mult"
-  }, "× ", stealMult, "倍（仲間）"), /*#__PURE__*/React.createElement("div", {
+  }, "⭐ 5面ボーナス ×", STEAL_K5_MULT), /*#__PURE__*/React.createElement("div", {
     className: "ss-total gold-text"
   }, "= +", fmt(totalDisplay), " 🎉"), boxRewards.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "steal-rewards"
@@ -2797,8 +3456,8 @@ function CastleScreen({
     }
     setVillage(nv);
     setTappedId(null);
-    grantRolls && grantRolls(25); // ステージクリア報酬：ダイスロール
-    showToast(headStart > 0 ? '次のステージへ！ 🎲+25 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +25 獲得');
+    grantRolls && grantRolls(75); // ステージクリア報酬：ダイスロール
+    showToast(headStart > 0 ? '次のステージへ！ 🎲+75 ＆ 建物Lv+1！' : '次のステージへ！ 🎲ロール +75 獲得');
   };
   const costOf = it => it.level < itemMax(it) ? Math.round(buildCost(it.level, game.stage) * (1 - buildDiscount)) : 0;
 
@@ -2821,7 +3480,7 @@ function CastleScreen({
       level: lvl
     } : x));
     // レベルアップでダイスロール獲得（完成時は多め）
-    const rr = complete ? 10 : 3;
+    const rr = complete ? 30 : 9;
     grantRolls && grantRolls(rr);
     showToast(complete ? `${it.emoji} 完成！ 🎲ロール +${rr}！` : `${it.emoji} Lv${lvl}！ 🎲ロール +${rr}`);
   };
@@ -2934,7 +3593,7 @@ const CARD_SETS = [{
   name: '忍びの一族',
   color: '#DB2777',
   reward: {
-    rolls: 20,
+    rolls: 60,
     coins: 50000
   },
   cards: [{
@@ -2960,7 +3619,7 @@ const CARD_SETS = [{
   name: '武具秘伝',
   color: '#DC2626',
   reward: {
-    rolls: 30,
+    rolls: 90,
     coins: 100000
   },
   cards: [{
@@ -2986,7 +3645,7 @@ const CARD_SETS = [{
   name: '名城巡り',
   color: '#059669',
   reward: {
-    rolls: 50,
+    rolls: 150,
     coins: 300000
   },
   cards: [{
@@ -3012,7 +3671,7 @@ const CARD_SETS = [{
   name: '世界名城・東',
   color: '#D97706',
   reward: {
-    rolls: 60,
+    rolls: 180,
     coins: 400000
   },
   cards: [{
@@ -3038,7 +3697,7 @@ const CARD_SETS = [{
   name: '世界名城・西',
   color: '#0EA5E9',
   reward: {
-    rolls: 80,
+    rolls: 240,
     coins: 600000
   },
   cards: [{
@@ -3068,7 +3727,7 @@ const CARD_SETS = [{
   name: '群雄割拠',
   color: '#B91C1C',
   reward: {
-    rolls: 70,
+    rolls: 210,
     coins: 500000
   },
   cards: [{
@@ -3094,7 +3753,7 @@ const CARD_SETS = [{
   name: '忍びの好敵手',
   color: '#7C3AED',
   reward: {
-    rolls: 50,
+    rolls: 150,
     coins: 300000
   },
   cards: [{
@@ -3120,7 +3779,7 @@ const CARD_SETS = [{
   name: '市井の者',
   color: '#65A30D',
   reward: {
-    rolls: 40,
+    rolls: 120,
     coins: 200000
   },
   cards: [{
@@ -3606,26 +4265,30 @@ const CHAR_SHOP_PRICE = {
 // こばんで買える消耗品（何度でも購入可）
 const KOBAN_SHOP = [{
   id: 'roll30',
-  label: 'ロール +30',
+  label: 'ロール +90',
   sub: '🎲',
+  subImg: 'ui/Icon_Dice.png',
   coins: 60000,
-  rolls: 30
+  rolls: 90
 }, {
   id: 'roll80',
-  label: 'ロール +80',
+  label: 'ロール +240',
   sub: '🎲',
+  subImg: 'ui/Icon_Dice.png',
   coins: 150000,
-  rolls: 80
+  rolls: 240
 }, {
   id: 'shield1',
   label: 'シールド +1',
   sub: '🛡️',
+  subImg: 'ui/Icon_Shield.png',
   coins: 120000,
   shields: 1
 }, {
   id: 'ticket1',
   label: 'レイド券 +1',
   sub: '🎟️',
+  subImg: 'ui/Icon_Ticket.png',
   coins: 100000,
   tickets: 1
 }];
@@ -3693,7 +4356,11 @@ function CollectionScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "📖 流派コレクション")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Card.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "📖")
+  }), "流派コレクション")), /*#__PURE__*/React.createElement("div", {
     className: "sheet-scroll"
   }, CARD_SETS.map(set => {
     const done = set.cards.every(c => has(c.id));
@@ -3723,7 +4390,15 @@ function CollectionScreen({
       className: "big-btn small " + (done && !isClaimed ? 'gold-btn' : 'disabled'),
       disabled: !done || isClaimed,
       onClick: () => onClaim(set)
-    }, isClaimed ? '受取済み' : done ? `コンプ報酬：🎲${set.reward.rolls} 💰${fmt(set.reward.coins)}` : 'セット未完成'));
+    }, isClaimed ? '受取済み' : done ? /*#__PURE__*/React.createElement(React.Fragment, null, "コンプ報酬：", /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Icon_Dice.png',
+      className: "rb-ico",
+      fallback: /*#__PURE__*/React.createElement("span", null, "🎲")
+    }), set.reward.rolls, " ", /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Koban_Small.png',
+      className: "rb-ico",
+      fallback: /*#__PURE__*/React.createElement("span", null, "💰")
+    }), fmt(set.reward.coins)) : 'セット未完成'));
   })));
 }
 
@@ -3750,7 +4425,11 @@ function CharactersScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "🥷 仲間（キャラクター）")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Companion.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🥷")
+  }), "仲間（キャラクター）")), /*#__PURE__*/React.createElement("div", {
     className: "char-equip-banner"
   }, eqChar ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Img, {
     src: charThumb(eqChar.id),
@@ -3810,9 +4489,13 @@ function CharactersScreen({
         }
       }, /*#__PURE__*/React.createElement("div", {
         className: "char-card-face"
-      }, locked ? /*#__PURE__*/React.createElement("span", {
-        className: "char-lock"
-      }, "🔒") : /*#__PURE__*/React.createElement(Img, {
+      }, locked ? /*#__PURE__*/React.createElement(Img, {
+        src: IMG + 'ui/Icon_Lock.png',
+        className: "char-lock-img",
+        fallback: /*#__PURE__*/React.createElement("span", {
+          className: "char-lock"
+        }, "🔒")
+      }) : /*#__PURE__*/React.createElement(Img, {
         src: charThumb(c.id),
         className: "char-card-img",
         fallback: /*#__PURE__*/React.createElement("span", {
@@ -3947,7 +4630,7 @@ const RAID_MAX_BOSS = RAID_BOSSES.length; // = MAX_STAGE = 10
 
 // --- ボス撃破報酬カーブ ---
 const raidBossCoin = n => 200000 + 300000 * (n - 1); // boss1=200k … boss10=2.9M
-const raidBossRolls = n => 20 + 5 * n; // 25 … 70
+const raidBossRolls = n => 3 * (20 + 5 * n); // 75 … 210
 const RAID_MILESTONES = [75, 50, 25];
 const RAID_MILESTONE_FRAC = {
   75: 0.08,
@@ -3962,6 +4645,83 @@ const RAID_DMG_MIN = 3,
 const raidBossTough = n => 2.5 + (n - 1) * 1.4;
 const raidDamagePct = (partyAP, n) => Math.max(RAID_DMG_MIN, Math.min(RAID_DMG_MAX, Math.round((partyAP + 6) / raidBossTough(n))));
 const RAID_PARTY_MAX = 4;
+
+// マイルストーン到達の祝福オーバーレイ（約1.2秒・タップで即スキップ）。複数同時通過は呼び出し側で合算済み。
+function RaidMsCelebrate({
+  hits,
+  amount,
+  onDone
+}) {
+  const doneRef = useRef(false);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone();
+  };
+  useEffect(() => {
+    SFX.coin();
+    SFX.stage();
+    const t = setTimeout(finish, 1200);
+    return () => clearTimeout(t);
+  }, []);
+  const label = hits.join('/');
+  return /*#__PURE__*/React.createElement("div", {
+    className: "raid-ms-celebrate",
+    onClick: finish
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rmc-flash"
+  }), /*#__PURE__*/React.createElement(FrameAnim, {
+    name: "effect/Effect_Shine",
+    count: 8,
+    interval: 70,
+    className: "rmc-shine"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "rmc-banner"
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "討伐報酬！",
+    sub: `HP${label}%突破　+${fmt(amount)}🪙`
+  })), /*#__PURE__*/React.createElement(CoinParticles, {
+    count: 24,
+    onDone: () => {}
+  }));
+}
+
+// 撃破時の豪華祝福オーバーレイ（約1.5秒・タップで即スキップ）
+function RaidDefeatCelebrate({
+  bossName,
+  onDone
+}) {
+  const doneRef = useRef(false);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone();
+  };
+  useEffect(() => {
+    SFX.jackpot();
+    SFX.stage();
+    const t = setTimeout(finish, 1500);
+    return () => clearTimeout(t);
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "raid-defeat-celebrate",
+    onClick: finish
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rdc-flash"
+  }), /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'effect/Effect_Jackpot.png',
+    className: "rdc-effect",
+    fallback: /*#__PURE__*/React.createElement("div", null)
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "rdc-banner"
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "討伐成功！！",
+    sub: `${bossName} 討伐！`
+  })), /*#__PURE__*/React.createElement(CoinParticles, {
+    count: 40,
+    onDone: () => {}
+  }));
+}
 function ClanRaidScreen({
   onBack,
   addCoins,
@@ -3989,6 +4749,14 @@ function ClanRaidScreen({
   const defeated = hp <= 0;
   const partyAP = raidParty.reduce((s, id) => s + attackPower(id, charLevels[id] || 1), 0);
   const claimedThis = claimedBosses.includes(boss);
+
+  // マイルストーン祝福・撃破祝福・受取バーストは表示専用のローカルstate（報酬付与ロジック・永続化は変更しない）
+  const [msFx, setMsFx] = useState(null); // { hits:number[], amount:number } | null
+  const [defeatFx, setDefeatFx] = useState(false); // 撃破時に1回だけtrue
+  const [claimBurst, setClaimBurst] = useState(false);
+  useEffect(() => {
+    if (defeated && !claimedBosses.includes(boss)) setDefeatFx(true);
+  }, [defeated, boss]);
   const attack = () => {
     if (allDone || awaitingUnlock || defeated) return;
     if (tickets <= 0) {
@@ -4008,6 +4776,10 @@ function ClanRaidScreen({
       bonus = newlyHit.reduce((s, m) => s + raidMilestoneReward(boss, m), 0);
       addCoins(bonus);
       showToast(`🏯 ボスHP ${newlyHit[newlyHit.length - 1]}%突破！ 報酬 +${fmt(bonus)} 🪙`);
+      setMsFx({
+        hits: newlyHit,
+        amount: bonus
+      });
     }
     setRaid(r => ({
       ...r,
@@ -4021,6 +4793,8 @@ function ClanRaidScreen({
     addCoins(raidBossCoin(boss));
     grantRolls && grantRolls(raidBossRolls(boss));
     showToast(`🎲 ロール +${raidBossRolls(boss)} 獲得！`);
+    SFX.jackpot();
+    setClaimBurst(true);
     setRaid(r => {
       const cb = [...r.claimedBosses, boss];
       if (boss >= RAID_MAX_BOSS) return {
@@ -4057,7 +4831,11 @@ function ClanRaidScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "🎟️ レイドチケット × ", tickets)), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Ticket.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎟️")
+  }), "レイドチケット × ", tickets)), /*#__PURE__*/React.createElement("div", {
     className: "raid-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "raid-title"
@@ -4086,15 +4864,61 @@ function ClanRaidScreen({
     style: {
       width: hp + '%'
     }
-  }), /*#__PURE__*/React.createElement("span", {
+  }), RAID_MILESTONES.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m,
+    className: "raid-ms-tick" + (milestonesHit.includes(m) ? ' hit' : ''),
+    style: {
+      left: m + '%'
+    }
+  })), /*#__PURE__*/React.createElement("span", {
     className: "raid-hptext"
-  }, "ボスHP ", hp, "%"))), /*#__PURE__*/React.createElement("div", {
+  }, "ボスHP ", hp, "%")), /*#__PURE__*/React.createElement("div", {
+    className: "raid-ms-chips"
+  }, RAID_MILESTONES.map(m => {
+    const hit = milestonesHit.includes(m);
+    return /*#__PURE__*/React.createElement("div", {
+      key: m,
+      className: "raid-ms-chip" + (hit ? ' hit' : '') + (msFx && msFx.hits.includes(m) ? ' pop' : '')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "msc-pct"
+    }, "HP", m, "%"), /*#__PURE__*/React.createElement("span", {
+      className: "msc-amt"
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Koban_Small.png',
+      className: "msc-ico",
+      fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+    }), fmt(raidMilestoneReward(boss, m))), hit && /*#__PURE__*/React.createElement("span", {
+      className: "msc-check"
+    }, "✓"));
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "raid-ms-chip clear" + (claimedThis ? ' hit claimed' : defeated ? ' hit ready' : '') + (defeatFx || claimBurst ? ' pop' : '')
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "msc-pct"
+  }, "撃破"), /*#__PURE__*/React.createElement("span", {
+    className: "msc-amt"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "msc-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+  }), fmt(raidBossCoin(boss))), /*#__PURE__*/React.createElement("span", {
+    className: "msc-amt"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Dice.png',
+    className: "msc-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎲")
+  }), raidBossRolls(boss)), claimedThis && /*#__PURE__*/React.createElement("span", {
+    className: "msc-check"
+  }, "✓")))), /*#__PURE__*/React.createElement("div", {
     className: "raid-log"
   }, log), /*#__PURE__*/React.createElement("div", {
     className: "raid-party-bar"
   }, /*#__PURE__*/React.createElement("div", {
     className: "rpb-head"
-  }, /*#__PURE__*/React.createElement("span", null, "討伐編成・合計攻撃力 ⚔️", fmt(partyAP)), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", null, "討伐編成・合計攻撃力 ", /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'dice/DiceFace_Attack.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "⚔️")
+  }), fmt(partyAP)), /*#__PURE__*/React.createElement("button", {
     className: "raid-party-edit",
     onClick: onEditParty
   }, "編成 ✎")), /*#__PURE__*/React.createElement("div", {
@@ -4138,20 +4962,48 @@ function ClanRaidScreen({
     className: "big-btn gold-btn" + (claimedThis ? ' disabled' : ''),
     disabled: claimedThis,
     onClick: claim
-  }, claimedThis ? '受取済み' : `報酬を受け取る 💰${fmt(raidBossCoin(boss))}`) : /*#__PURE__*/React.createElement("button", {
+  }, claimedThis ? '受取済み' : /*#__PURE__*/React.createElement(React.Fragment, null, "報酬を受け取る ", /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "rb-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "💰")
+  }), fmt(raidBossCoin(boss)))) : /*#__PURE__*/React.createElement("button", {
     className: "big-btn red-btn" + (tickets > 0 && raidParty.length ? '' : ' disabled'),
     onClick: attack
-  }, "攻撃する！ 🎟️×1"), !allDone && !awaitingUnlock && !defeated && tickets <= 0 && /*#__PURE__*/React.createElement("div", {
+  }, "攻撃する！ ", /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Ticket.png',
+    className: "rb-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎟️")
+  }), "×1"), !allDone && !awaitingUnlock && !defeated && tickets <= 0 && /*#__PURE__*/React.createElement("div", {
     className: "raid-log",
     style: {
       marginTop: 8
     }
-  }, "🎟️チケットはゾロ目小判で入手できます"), !allDone && !awaitingUnlock && !defeated && tickets > 0 && !raidParty.length && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Ticket.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎟️")
+  }), "チケットはゾロ目小判で入手できます"), !allDone && !awaitingUnlock && !defeated && tickets > 0 && !raidParty.length && /*#__PURE__*/React.createElement("div", {
     className: "raid-log",
     style: {
       marginTop: 8
     }
-  }, "討伐編成を1体以上組もう")));
+  }, "討伐編成を1体以上組もう")), msFx && /*#__PURE__*/React.createElement(RaidMsCelebrate, {
+    hits: msFx.hits,
+    amount: msFx.amount,
+    onDone: () => setMsFx(null)
+  }), defeatFx && /*#__PURE__*/React.createElement(RaidDefeatCelebrate, {
+    bossName: bossDef.name,
+    onDone: () => setDefeatFx(false)
+  }), claimBurst && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(CoinParticles, {
+    count: 30,
+    onDone: () => setClaimBurst(false)
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "raid-claim-pop"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Dice.png',
+    className: "rcp-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎲")
+  }), "+", raidBossRolls(boss))));
 }
 
 /* ============================================================
@@ -4176,7 +5028,11 @@ function RaidPartyScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "🗡️ 討伐編成")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Clan.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🗡️")
+  }), "討伐編成")), /*#__PURE__*/React.createElement("div", {
     className: "char-equip-banner"
   }, /*#__PURE__*/React.createElement("div", {
     className: "ceb-info"
@@ -4184,7 +5040,11 @@ function RaidPartyScreen({
     className: "ceb-label"
   }, "編成 ", party.length, "/", RAID_PARTY_MAX), /*#__PURE__*/React.createElement("div", {
     className: "ceb-name"
-  }, "合計攻撃力 ⚔️", fmt(sumAP)))), /*#__PURE__*/React.createElement("div", {
+  }, "合計攻撃力 ", /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'dice/DiceFace_Attack.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "⚔️")
+  }), fmt(sumAP)))), /*#__PURE__*/React.createElement("div", {
     className: "sheet-scroll"
   }, ranks.map(rk => {
     const meta = CHAR_RANKS[rk];
@@ -4221,9 +5081,13 @@ function RaidPartyScreen({
         onClick: () => owned && onToggle(c.id)
       }, /*#__PURE__*/React.createElement("div", {
         className: "char-card-face"
-      }, locked ? /*#__PURE__*/React.createElement("span", {
-        className: "char-lock"
-      }, "🔒") : /*#__PURE__*/React.createElement(Img, {
+      }, locked ? /*#__PURE__*/React.createElement(Img, {
+        src: IMG + 'ui/Icon_Lock.png',
+        className: "char-lock-img",
+        fallback: /*#__PURE__*/React.createElement("span", {
+          className: "char-lock"
+        }, "🔒")
+      }) : /*#__PURE__*/React.createElement(Img, {
         src: charThumb(c.id),
         className: "char-card-img",
         fallback: /*#__PURE__*/React.createElement("span", {
@@ -4242,7 +5106,11 @@ function RaidPartyScreen({
         className: "char-card-name"
       }, locked ? '？？？' : c.name), owned ? /*#__PURE__*/React.createElement("div", {
         className: "char-atk-badge"
-      }, "⚔️", attackPower(c.id, lv), "\u3000Lv", lv) : /*#__PURE__*/React.createElement("div", {
+      }, /*#__PURE__*/React.createElement(Img, {
+        src: IMG + 'dice/DiceFace_Attack.png',
+        className: "gl-ico",
+        fallback: /*#__PURE__*/React.createElement("span", null, "⚔️")
+      }), attackPower(c.id, lv), "\u3000Lv", lv) : /*#__PURE__*/React.createElement("div", {
         className: "char-card-desc"
       }, "未入手"));
     })));
@@ -4256,7 +5124,7 @@ function RaidPartyScreen({
 const SEASON_TIERS = [{
   xp: 0,
   kind: 'roll',
-  amt: 10
+  amt: 30
 }, {
   xp: 5,
   kind: 'coin',
@@ -4268,7 +5136,7 @@ const SEASON_TIERS = [{
 }, {
   xp: 20,
   kind: 'roll',
-  amt: 30
+  amt: 90
 }, {
   xp: 30,
   kind: 'coin',
@@ -4280,7 +5148,7 @@ const SEASON_TIERS = [{
 }, {
   xp: 55,
   kind: 'roll',
-  amt: 50
+  amt: 150
 }, {
   xp: 70,
   kind: 'coin',
@@ -4385,7 +5253,11 @@ function SeasonScreen({
       className: "tier-btn " + (unlocked && !isClaimed ? 'ready' : ''),
       disabled: !unlocked || isClaimed,
       onClick: () => onClaim(i)
-    }, isClaimed ? '✓' : unlocked ? '受取' : '🔒'));
+    }, isClaimed ? '✓' : unlocked ? '受取' : /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Icon_Lock.png',
+      className: "tb-lock",
+      fallback: /*#__PURE__*/React.createElement("span", null, "🔒")
+    })));
   })))));
 }
 
@@ -4396,7 +5268,7 @@ const INVITE_MILES = [{
   label: '友達がゲームを開始',
   reward: {
     kind: 'roll',
-    amt: 25
+    amt: 75
   },
   done: true
 }, {
@@ -4410,7 +5282,7 @@ const INVITE_MILES = [{
   label: '友達が一族に加入',
   reward: {
     kind: 'roll',
-    amt: 50
+    amt: 150
   },
   done: false
 }, {
@@ -4442,7 +5314,11 @@ function InviteScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "👥 友達を招待")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Invite.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "👥")
+  }), "友達を招待")), /*#__PURE__*/React.createElement("div", {
     className: "invite-hero"
   }, /*#__PURE__*/React.createElement("div", {
     className: "invite-code"
@@ -4468,8 +5344,163 @@ function InviteScreen({
       className: "tier-btn " + (m.done && !isClaimed ? 'ready' : ''),
       disabled: !m.done || isClaimed,
       onClick: () => claim(i, m.reward)
-    }, isClaimed ? '✓' : m.done ? '受取' : '🔒'));
+    }, isClaimed ? '✓' : m.done ? '受取' : /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Icon_Lock.png',
+      className: "tb-lock",
+      fallback: /*#__PURE__*/React.createElement("span", null, "🔒")
+    })));
   })));
+}
+
+/* ============================================================
+   SETTINGS — サウンド・演出・表示設定
+   ============================================================ */
+const ROLLANIM_OPTS = [{
+  id: '3d',
+  label: '3D立体'
+}, {
+  id: 'toss',
+  label: '飛ばし'
+}, {
+  id: 'classic',
+  label: '回転'
+}];
+function SettingsScreen({
+  onBack,
+  seVol,
+  setSeVol,
+  bgmVol,
+  setBgmVol,
+  soundOn,
+  onToggleSound,
+  rollAnim,
+  onSelectRollAnim,
+  night,
+  onToggleNight
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "screen sheet-screen"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mini-bar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "ghost-btn",
+    onClick: onBack
+  }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
+    className: "ghost-label"
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Settings.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "⚙️")
+  }), "設定")), /*#__PURE__*/React.createElement("div", {
+    className: "sheet-scroll"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-sec"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-sec-title"
+  }, "サウンド"), /*#__PURE__*/React.createElement("div", {
+    className: "setting-row"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "sr-label"
+  }, "サウンド ON / OFF"), /*#__PURE__*/React.createElement("div", {
+    className: "set-seg",
+    style: {
+      maxWidth: 120
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: soundOn ? 'on' : '',
+    onClick: () => {
+      if (!soundOn) onToggleSound();
+    }
+  }, "ON"), /*#__PURE__*/React.createElement("button", {
+    className: !soundOn ? 'on' : '',
+    onClick: () => {
+      if (soundOn) onToggleSound();
+    }
+  }, "OFF"))), /*#__PURE__*/React.createElement("div", {
+    className: "setting-row"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "sr-label"
+  }, "SE音量"), /*#__PURE__*/React.createElement("span", {
+    className: "sr-val"
+  }, seVol, "%")), /*#__PURE__*/React.createElement("input", {
+    className: "set-range",
+    type: "range",
+    min: "0",
+    max: "100",
+    value: seVol,
+    style: {
+      '--fill': seVol + '%'
+    },
+    onChange: e => setSeVol(parseInt(e.target.value, 10)),
+    onMouseUp: () => SFX.tap(),
+    onTouchEnd: () => SFX.tap()
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "setting-row",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "sr-label"
+  }, "BGM音量"), /*#__PURE__*/React.createElement("span", {
+    className: "sr-val"
+  }, bgmVol, "%")), /*#__PURE__*/React.createElement("input", {
+    className: "set-range",
+    type: "range",
+    min: "0",
+    max: "100",
+    value: bgmVol,
+    style: {
+      '--fill': bgmVol + '%'
+    },
+    onChange: e => setBgmVol(parseInt(e.target.value, 10))
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "setting-note"
+  }, "※ BGM音源は近日追加予定です")), /*#__PURE__*/React.createElement("div", {
+    className: "settings-sec"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "settings-sec-title"
+  }, "表示"), /*#__PURE__*/React.createElement("div", {
+    className: "setting-row"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "sr-label"
+  }, "ダイス演出")), /*#__PURE__*/React.createElement("div", {
+    className: "set-seg"
+  }, ROLLANIM_OPTS.map(o => /*#__PURE__*/React.createElement("button", {
+    key: o.id,
+    className: o.id === rollAnim ? 'on' : '',
+    onClick: () => {
+      SFX.tap();
+      onSelectRollAnim(o.id);
+    }
+  }, o.label))), /*#__PURE__*/React.createElement("div", {
+    className: "setting-row",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "sr-label"
+  }, "昼 / 夜テーマ"), /*#__PURE__*/React.createElement("div", {
+    className: "set-seg",
+    style: {
+      maxWidth: 120
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: !night ? 'on' : '',
+    onClick: () => {
+      if (night) {
+        SFX.tap();
+        onToggleNight();
+      }
+    }
+  }, "☀️ 昼"), /*#__PURE__*/React.createElement("button", {
+    className: night ? 'on' : '',
+    onClick: () => {
+      if (!night) {
+        SFX.tap();
+        onToggleNight();
+      }
+    }
+  }, "🌙 夜"))))));
 }
 
 /* ============================================================
@@ -4480,21 +5511,21 @@ const SHOP_PACKS = [{
   title: '見習いパック',
   price: '¥120',
   coins: 100000,
-  rolls: 20,
+  rolls: 60,
   tag: ''
 }, {
   id: 'm',
   title: '忍者パック',
   price: '¥610',
   coins: 600000,
-  rolls: 120,
+  rolls: 360,
   tag: '人気'
 }, {
   id: 'l',
   title: '大名パック',
   price: '¥3,060',
   coins: 3500000,
-  rolls: 700,
+  rolls: 2100,
   tag: 'お得'
 }, {
   id: 'vip',
@@ -4526,7 +5557,11 @@ function ShopScreen({
     onClick: onBack
   }, "← 戻る"), /*#__PURE__*/React.createElement("span", {
     className: "ghost-label"
-  }, "🛒 Shinobi Mart"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Shop.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🛒")
+  }), "Shinobi Mart"), /*#__PURE__*/React.createElement("span", {
     className: "shop-coins"
   }, /*#__PURE__*/React.createElement(Img, {
     src: IMG + 'ui/Koban_Small.png',
@@ -4540,7 +5575,11 @@ function ShopScreen({
     className: "shop-sec-head"
   }, /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-title"
-  }, "🎰 仲間ガチャ"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/TreasureBox_Closed.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎰")
+  }), "仲間ガチャ"), /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-note"
   }, "高いガチャほど強い仲間が出やすい")), /*#__PURE__*/React.createElement("div", {
     className: "gacha-list"
@@ -4566,7 +5605,11 @@ function ShopScreen({
     className: "shop-sec-head"
   }, /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-title"
-  }, "🧩 日替りピース"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Piece.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🧩")
+  }), "日替りピース"), /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-note"
   }, "毎日入れ替わり・各1回")), /*#__PURE__*/React.createElement("div", {
     className: "piece-grid"
@@ -4624,7 +5667,11 @@ function ShopScreen({
     className: "shop-sec-head"
   }, /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-title"
-  }, "🪙 こばんショップ"), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+  }), "こばんショップ"), /*#__PURE__*/React.createElement("span", {
     className: "shop-sec-note"
   }, "各1回／日")), /*#__PURE__*/React.createElement("div", {
     className: "koban-grid"
@@ -4636,7 +5683,11 @@ function ShopScreen({
       className: "koban-item " + (bought ? 'bought' : '')
     }, /*#__PURE__*/React.createElement("div", {
       className: "ki-label"
-    }, it.sub, " ", it.label), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + it.subImg,
+      className: "gl-ico",
+      fallback: /*#__PURE__*/React.createElement("span", null, it.sub)
+    }), it.label), /*#__PURE__*/React.createElement("button", {
       className: "po-buy " + (bought ? 'disabled' : poor ? 'poor' : 'buy'),
       disabled: bought,
       onClick: () => onBuyKoban(it)
@@ -4662,7 +5713,19 @@ function ShopScreen({
     className: "pack-title"
   }, p.title), /*#__PURE__*/React.createElement("div", {
     className: "pack-contents"
-  }, p.coins > 0 && /*#__PURE__*/React.createElement("div", null, "🪙 ", fmt(p.coins)), p.rolls > 0 && /*#__PURE__*/React.createElement("div", null, "🎲 ", p.rolls), p.id === 'vip' && /*#__PURE__*/React.createElement("div", null, "👑 特典")), /*#__PURE__*/React.createElement("button", {
+  }, p.coins > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Koban_Small.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
+  }), fmt(p.coins)), p.rolls > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Dice.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🎲")
+  }), p.rolls), p.id === 'vip' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Crown.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "👑")
+  }), "特典")), /*#__PURE__*/React.createElement("button", {
     className: "big-btn small gold-btn",
     onClick: () => onBuyPack(p)
   }, p.price)))))));
@@ -4792,21 +5855,30 @@ function JackpotTile({
 }
 function MultiplierOverlay({
   base,
+  coinAdd = 0,
   result,
   summon = null,
   boxReward = null,
   pool,
-  betMult = 1,
+  comboK = 1,
+  combo = false,
+  kMult = 1,
+  cap = Infinity,
+  k = null,
   onDone
 }) {
   // ジャックポットは6種の報酬から抽選。当選(result)は確定済み。
   // どの報酬が並ぶか見えるよう「縦スロットリール」で高速回転→減速→当選タイルを中央の当たりラインに停止。
+  // 黄金律（コイン×ジャックポットの合体）の場合、抽選前に coinAdd（小判ぞろ目相当の上乗せ）が乗り、
+  // さらに合体ボーナス comboK（既定1.15）が全体に掛かる。
   const items = pool && pool.length ? pool : [result];
   const TILE = 88;
   const SPINS = 6;
   const landIdx = Math.max(0, items.indexOf(result));
   const mult = result.coinMultiplier;
-  const total = (base * mult + (result.treasure ? 50000 : 0)) * betMult;
+  // Math.round：Math.floorだと合体倍率(comboK=1.15)適用時に浮動小数の丸め誤差で1コイン目減りすることがある
+  const raw = Math.round(((base + coinAdd) * mult + (result.treasure ? 50000 : 0)) * comboK * kMult);
+  const total = Math.min(raw, cap);
 
   // リールの牌列：0..winIdx が回転区間、末尾に上下ぶんを足す。3枚窓の中央(上から2枚目)に当選を置く。
   const winIdx = SPINS * items.length + landIdx;
@@ -4885,11 +5957,19 @@ function MultiplierOverlay({
     src: IMG + 'ui/Koban_Small.png',
     className: "mb-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
-  }), " ", fmt(base)), /*#__PURE__*/React.createElement("div", {
+  }), " ", fmt(base)), combo && /*#__PURE__*/React.createElement("div", {
+    className: "mult-coinadd"
+  }, "🪙 小判上乗せ +", fmt(coinAdd)), /*#__PURE__*/React.createElement("div", {
     className: "mult-x"
-  }, "× ", mult, betMult > 1 ? ` × ${betMult}` : '', result.treasure ? ' ＋🎁' : ''), /*#__PURE__*/React.createElement("div", {
+  }, "× ", mult, result.treasure ? ' ＋🎁' : ''), combo && /*#__PURE__*/React.createElement("div", {
+    className: "mult-combo-badge"
+  }, "合体 ×", COMBO_K), kMult > 1 && /*#__PURE__*/React.createElement("div", {
+    className: "mult-combo-badge"
+  }, "× ", kMult, k ? `（成立${k}面）` : ''), /*#__PURE__*/React.createElement("div", {
     className: "mult-total gold-text"
-  }, "= +", fmt(disp), " 🪙"), summon && /*#__PURE__*/React.createElement("div", {
+  }, "= +", fmt(disp), " 🪙"), raw > cap && /*#__PURE__*/React.createElement("div", {
+    className: "mult-cap-note"
+  }, "上限到達"), summon && /*#__PURE__*/React.createElement("div", {
     className: "jp-summon " + summon.char.rank
   }, /*#__PURE__*/React.createElement(Img, {
     src: charThumb(summon.char.id),
@@ -4940,6 +6020,8 @@ function MultiplierOverlay({
    SHIELD OVERLAY — シールドぞろ目の獲得演出（青・盾スラム＋ピル充填）
    ============================================================ */
 function ShieldOverlay({
+  k = 3,
+  excessCoin = 0,
   onDone
 }) {
   const [phase, setPhase] = useState('in'); // in → fill
@@ -4984,7 +6066,12 @@ function ShieldOverlay({
     }
   }))), /*#__PURE__*/React.createElement("div", {
     className: "shield-sub"
-  }, "🛡️ 次の攻撃を防ぐ")));
+  }, "🛡️ 次の攻撃を防ぐ"), excessCoin > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "shield-excess"
+  }, "🛡️満タン＋超過", k - 3, "枚を +", fmt(excessCoin), "🪙 に変換！")), excessCoin > 0 && /*#__PURE__*/React.createElement(CoinParticles, {
+    key: "shieldexcess",
+    count: 16
+  }));
 }
 
 /* ============================================================
@@ -5061,7 +6148,11 @@ function GachaOverlay({
     className: "gacha-rank-tag"
   }, meta.label), /*#__PURE__*/React.createElement("div", {
     className: "gacha-amt"
-  }, "🧩 かけら +", amount), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Icon_Piece.png',
+    className: "gl-ico",
+    fallback: /*#__PURE__*/React.createElement("span", null, "🧩")
+  }), "かけら +", amount), /*#__PURE__*/React.createElement("div", {
     className: "gacha-tap-hint"
   }, "タップして閉じる")));
 }
@@ -5105,8 +6196,8 @@ function App() {
       levels: Object.fromEntries(castleVillage.map(it => [it.id, it.level]))
     });
   }, [castleVillage, stage]);
-  const [rolls, setRolls] = useState(50);
-  const [rollsMax] = useState(50);
+  const [rolls, setRolls] = useState(150);
+  const [rollsMax] = useState(150);
   const [opponent, setOpponent] = useState(() => {
     const o = makeOpponent(OPP_BY_KEY[new URLSearchParams(window.location.search).get('opp')] || OPP_BY_KEY.tanaka);
     const qsp = new URLSearchParams(window.location.search);
@@ -5114,7 +6205,7 @@ function App() {
     return o;
   });
 
-  // ?screen=bonus|attackSelect|attackResult|steal|castle — jump straight to a screen (dev/preview)
+  // ?screen=bonus|attackSelect|attackResult|steal|castle|assault — jump straight to a screen (dev/preview)
   const qp = new URLSearchParams(window.location.search);
   const initScreen = qp.get('screen') || 'main';
   const initFlow = {
@@ -5133,7 +6224,15 @@ function App() {
     },
     steal: {
       stealMultiplier: 2
-    }
+    },
+    assault: (() => {
+      const attackFace = BONUS_DICE_TABLES.attack[5]; // coinRate 0.15 / damage 2
+      return {
+        attackFace,
+        aFull: 60000,
+        opponentShields: 1
+      };
+    })()
   }[initScreen] || {};
   const [screen, setScreen] = useState(initScreen);
   const [flow, setFlow] = useState(initFlow);
@@ -5142,7 +6241,10 @@ function App() {
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
   const [gachaFx, setGachaFx] = useState(null); // {tier, char, amount, rank} 仲間ガチャ演出中
   const [toast, setToast] = useState('');
-  const [night, setNight] = useState(qp.has('night'));
+  const [night, setNight] = useState(() => lsGet('ndm_night', qp.has('night')));
+  useEffect(() => {
+    lsSet('ndm_night', night);
+  }, [night]);
   // collection / season / cards
   const [ownedCards, setOwnedCards] = useState({}); // {cardId: count}
   const ownedRef = useRef({}); // 所持カードの同期ミラー（カードドロップの即時判定用）
@@ -5214,9 +6316,10 @@ function App() {
   useEffect(() => {
     lsSet('ndm_raid', raid);
   }, [raid]);
-  const [bet, setBet] = useState(1); // ロールポイント倍率（1〜3）：消費ロール＆報酬に同倍率
-  const betRef = useRef(1);
-  betRef.current = bet; // フロー中の報酬計算で参照（stale closure回避）
+  const [diceCount, setDiceCount] = useState(DICE_MIN); // 積むダイス数（3/4/5）：消費ロールはダイス数ぶん（3/4/5）
+  const diceCountRef = useRef(diceCount);
+  diceCountRef.current = diceCount; // フロー中の参照用（stale closure回避）
+  const rollCost = DICE_COST[diceCount];
   const [auto, setAuto] = useState(qp.has('auto')); // オートロール（App 側で保持：画面遷移で MainRoll が再マウントされても維持）
   // ダイスのロール演出スタイル：'3d'（立体・既定）/ 'toss'（下から飛ばす）/ 'classic'（回転）。いつでも切替可（localStorage保持）
   const [rollAnim, setRollAnim] = useState(() => {
@@ -5232,6 +6335,29 @@ function App() {
     try {
       localStorage.setItem('ndm_rollanim', nx);
     } catch (e) {}
+    return nx;
+  }), []);
+  const selectRollAnim = useCallback(nx => {
+    setRollAnim(nx);
+    try {
+      localStorage.setItem('ndm_rollanim', nx);
+    } catch (e) {}
+  }, []);
+  // 設定画面：音量・サウンドON/OFF。SFX モジュールの値を初期値として同期
+  const [seVol, setSeVol] = useState(() => SFX.getVolume());
+  useEffect(() => {
+    lsSet('ndm_se_vol', seVol);
+    SFX.setVolume(seVol);
+  }, [seVol]);
+  const [bgmVol, setBgmVol] = useState(() => lsGet('ndm_bgm_vol', 60));
+  useEffect(() => {
+    lsSet('ndm_bgm_vol', bgmVol);
+    SFX.setBgmVolume(bgmVol / 100);
+  }, [bgmVol]);
+  const [soundOn, setSoundOn] = useState(() => SFX.isEnabled());
+  const toggleSound = useCallback(() => setSoundOn(v => {
+    const nx = !v;
+    SFX.setEnabled(nx);
     return nx;
   }), []);
   const coinsRef = useRef(coins);
@@ -5577,7 +6703,7 @@ function App() {
     if (claimedTiers.includes(i)) return;
     setClaimedTiers(c => [...c, i]);
     const r = SEASON_TIERS[i];
-    if (r.kind === 'roll') grantRolls(r.amt || 10);else if (r.kind === 'coin') addCoins(r.amt || 0);else if (r.kind === 'shield') grantShields(r.amt || 1);
+    if (r.kind === 'roll') grantRolls(r.amt || 30);else if (r.kind === 'coin') addCoins(r.amt || 0);else if (r.kind === 'shield') grantShields(r.amt || 1);
     showToast('シーズン報酬を受け取りました！');
   }, [claimedTiers, grantRolls, addCoins, grantShields, showToast]);
   const buyPack = useCallback(p => {
@@ -5593,30 +6719,45 @@ function App() {
     rollsMax,
     opponent,
     useRolls,
-    bet
+    diceCount,
+    rollCost
   };
 
   // ---- flow handlers ----
-  const onZorume = useCallback(faceId => {
+  // faceId, k（成立面数=ダイス数。ぞろ目役の効果はkでスケールする。合体役=assault/goldruleは非対象）
+  const onZorume = useCallback((faceId, k) => {
     if (faceId === 'shield') {
-      setShieldFx(true);
+      setShieldFx({
+        k,
+        excessCoin: shieldExcessCoin(stageRef.current, k)
+      }); // 専用の獲得演出（付与は演出完了時）
       return;
-    } // 専用の獲得演出（付与は演出完了時）
-    setZorumeFace(faceId); // shows overlay; onComplete routes to bonus
+    }
+    setZorumeFace({
+      faceId,
+      k
+    }); // shows overlay; onComplete routes to bonus
   }, []);
   const onZorumeComplete = useCallback(() => {
-    const f = zorumeFace;
+    const {
+      faceId: f,
+      k
+    } = zorumeFace;
     setZorumeFace(null);
     if (f === 'coin') {
       go('bonus', {
-        trigger: 'coin'
+        trigger: 'coin',
+        k
       }); // 小判ゾロ目のみボーナスルーレット
     } else if (f === 'attack') {
       go('attackSelect', {
-        bonusResult: rollBonusDice('attack')
+        bonusResult: rollBonusDice('attack'),
+        k
       }); // Attackはミニゲーム直行
     } else if (f === 'steal') {
-      go('steal', {}); // Stealはミニゲーム直行
+      go('steal', {
+        k
+      }); // Stealはミニゲーム直行
     } else if (f === 'jackpot') {
       const res = rollBonusDice('jackpot'); // Jackpotは報酬スロット演出（どの報酬かを見せる）
       const summon = res.companion ? rollCompanionSummon() : null; // 仲間召喚：どの仲間のかけらを何枚もらえるか事前確定
@@ -5627,7 +6768,10 @@ function App() {
         base: coinBaseForStage(stage),
         result: res,
         summon,
-        boxReward
+        boxReward,
+        kMult: JACKPOT_KMULT[k] || 1,
+        cap: jackpotCap(stage),
+        k
       });
     } else {
       go('main');
@@ -5637,7 +6781,7 @@ function App() {
     const trigger = flow.trigger;
     const base = coinBaseForStage(stage);
     if (trigger === 'coin') {
-      const gain = Math.round(base * result.multiplier * betRef.current * effRef.current.coinMult);
+      const gain = Math.round(base * result.multiplier * effRef.current.coinMult);
       addCoins(gain);
       // 獲得額の「式」はボーナス画面で表示済み。ここではチケット入手のみ通知。
       if (Math.random() < 0.4) {
@@ -5647,7 +6791,7 @@ function App() {
       go('main');
     } else if (trigger === 'jackpot') {
       const jm = effRef.current.coinMult * (1 + effRef.current.jackpotBonus); // 龍神など
-      const gain = Math.round((base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * betRef.current * jm);
+      const gain = Math.round((base * result.coinMultiplier + (result.treasure ? 50000 : 0)) * jm);
       addCoins(gain);
       showToast(`${result.label}！ +${fmt(gain)} 🪙${result.treasure ? ' 💎' : ''}`);
       go('main');
@@ -5666,9 +6810,9 @@ function App() {
   // AttackSelect が建物ごとに演出（コイン噴出/破壊 or シールド防御）を終えてから成否を渡してくる。
   const onAttackResolve = useCallback((part, success) => {
     const br = flow.bonusResult;
-    const damage = br?.damage || 1; // 破壊する棟数（ボーナスダイス由来）
+    const k = flow.k;
+    const damage = ATTACK_DESTROY_BY_K[k] || br?.damage || 1; // 破壊した棟数＝k−2（ぞろ目由来。通常役はボーナスダイスの棟数のまま）
     const rate = br?.coinRate || 0.25; // 成功時の獲得率（ボーナスダイス由来）
-    const b = betRef.current;
     const e = effRef.current; // 装備キャラ効果
     if (!success) {
       setOpponent(o => ({
@@ -5678,23 +6822,26 @@ function App() {
       go('attackResult', {
         attackResult: {
           success: false,
-          coinGain: Math.floor(opponent.coins * 0.07 * e.attackMult) * b,
+          coinGain: Math.floor(opponent.coins * 0.07 * e.attackMult),
           partLabel: part.label,
           damage
         }
       });
     } else {
+      const kMul = ATTACK_COIN_KMULT[k] || 1;
+      const capped = Math.floor(opponent.coins * ATTACK_COIN_CAP_FRAC);
+      const coinGain = Math.min(Math.floor(opponent.coins * rate * e.attackMult * kMul), capped);
       go('attackResult', {
         attackResult: {
           success: true,
-          coinGain: Math.floor(opponent.coins * rate * e.attackMult) * b,
+          coinGain,
           partLabel: part.label,
           damage,
           rate
         }
       });
     }
-  }, [flow.bonusResult, opponent, go]);
+  }, [flow.bonusResult, flow.k, opponent, go]);
 
   // 対戦が片付くたびに次の対戦相手へ入れ替える（大金持ち〜初心者からランダム）
   const rotateOpponent = useCallback(() => setOpponent(o => pickOpponent(o.key)), []);
@@ -5713,6 +6860,57 @@ function App() {
     // 宝箱の中身（カード or 仲間かけら）はスティール画面でリビュー済み。ここでは付与のみ（ポップアップなし）。
     if (rewards && rewards.length) setTimeout(() => grantStealRewards(rewards), 300);
   }, [addCoins, showToast, go, rotateOpponent, grantStealRewards]);
+
+  // ---- 合体役：強襲（attack×steal）／黄金律（coin×jackpot） ----
+  // 強襲は「積んで狙う合体役」でロールが直接的中した時のみ発生する専用ミニゲーム。
+  // 3タップ選択制：入場時に確定するのはattackFace/aFull/シールド枚数のスナップショットのみ。
+  // 各棟の略奪額はタップ時にAssaultScreen内でstealFromBuilding()を引く（stealと同一タイミング）。
+  const onAssault = useCallback(() => {
+    const e = effRef.current; // 装備キャラ効果（onAttackResolve等と同じくeffRefを参照。staleクロージャ回避）
+    const attackFace = rollBonusDice('attack');
+    const aFull = Math.floor(opponent.coins * attackFace.coinRate * e.attackMult);
+    go('assault', {
+      attackFace,
+      aFull,
+      opponentShields: opponent.shields
+    });
+  }, [opponent, go]);
+  const onAssaultDone = useCallback((total, meta = {}) => {
+    const consumed = meta.shieldsConsumed || 0;
+    if (total > 0) {
+      addCoins(total);
+      showToast(consumed > 0 ? `強襲！ 🛡️${consumed}枚に防がれつつ +${fmt(total)} 🪙` : `強襲成功！ +${fmt(total)} 🪙`);
+    }
+    if (consumed > 0) setOpponent(o => ({
+      ...o,
+      shields: Math.max(0, o.shields - consumed)
+    }));
+    rotateOpponent(); // クローズ時に1回のみ（逃げるも含む）
+    go('main');
+  }, [addCoins, showToast, rotateOpponent, go]);
+
+  // 黄金律：ジャックポット報酬スロット（MultiplierOverlay）に合流。coinBaseForStageの小判上乗せ＋合体×1.15を追加。
+  const onCombo = useCallback(comboId => {
+    if (comboId === 'assault') {
+      onAssault();
+      return;
+    }
+    if (comboId === 'goldrule') {
+      const res = rollBonusDice('jackpot');
+      const summon = res.companion ? rollCompanionSummon() : null;
+      const boxReward = res.treasure && !res.companion ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
+      const coinAdd = Math.round(coinBaseForStage(stage) * GOLDRULE_COIN_ADD);
+      setMultFx({
+        base: coinBaseForStage(stage),
+        coinAdd,
+        comboK: COMBO_K,
+        combo: true,
+        result: res,
+        summon,
+        boxReward
+      });
+    }
+  }, [onAssault, stage, ownedCharPieces]);
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
   }, screen === 'main' && /*#__PURE__*/React.createElement(MainRoll, {
@@ -5723,12 +6921,13 @@ function App() {
     showToast: showToast,
     go: go,
     onZorume: onZorume,
+    onCombo: onCombo,
     onCardDrop: onCardDrop,
     dropCard: dropCardSilent,
     onShop: () => go('shop'),
     tickets: tickets,
-    bet: bet,
-    setBet: setBet,
+    diceCount: diceCount,
+    setDiceCount: setDiceCount,
     night: night,
     onToggleNight: () => setNight(n => !n),
     auto: auto,
@@ -5748,14 +6947,14 @@ function App() {
   }), screen === 'bonus' && /*#__PURE__*/React.createElement(BonusRoll, {
     trigger: flow.trigger,
     stage: stage,
-    bet: bet,
+    k: flow.k || 3,
     onComplete: onBonusComplete
   }), screen === 'attackSelect' && /*#__PURE__*/React.createElement(AttackSelect, {
     opponent: opponent,
     bonusResult: flow.bonusResult,
     stage: stage,
+    k: flow.k || 3,
     ignoreShield: eff.ignoreShield,
-    onCancel: () => go('main'),
     onResolve: onAttackResolve
   }), screen === 'attackResult' && /*#__PURE__*/React.createElement(AttackResult, {
     result: flow.attackResult,
@@ -5765,13 +6964,24 @@ function App() {
     opponentName: opponent.name,
     opponentCoins: opponent.coins,
     opponentImg: opponent.img,
-    betMult: bet,
     onReceive: onStealReceive,
     stealMult: eff.stealMult,
     autoLastSpot: eff.stealLastSpot,
     stage: stage,
+    k: flow.k || 3,
     pieceBonus: eff.pieceBonus,
     ownedPieces: ownedCharPieces
+  }), screen === 'assault' && /*#__PURE__*/React.createElement(AssaultScreen, {
+    opponentName: opponent.name,
+    opponentCoins: opponent.coins,
+    opponentImg: opponent.img,
+    stealMult: eff.stealMult,
+    ignoreShield: eff.ignoreShield,
+    stage: stage,
+    attackFace: flow.attackFace,
+    aFull: flow.aFull,
+    opponentShields: flow.opponentShields,
+    onReceive: onAssaultDone
   }), screen === 'castle' && /*#__PURE__*/React.createElement(CastleScreen, {
     game: game,
     spendCoins: spendCoins,
@@ -5827,6 +7037,18 @@ function App() {
     showToast: showToast,
     grantRolls: grantRolls,
     addCoins: addCoins
+  }), screen === 'settings' && /*#__PURE__*/React.createElement(SettingsScreen, {
+    onBack: () => go('main'),
+    seVol: seVol,
+    setSeVol: setSeVol,
+    bgmVol: bgmVol,
+    setBgmVol: setBgmVol,
+    soundOn: soundOn,
+    onToggleSound: toggleSound,
+    rollAnim: rollAnim,
+    onSelectRollAnim: selectRollAnim,
+    night: night,
+    onToggleNight: () => setNight(n => !n)
   }), screen === 'shop' && /*#__PURE__*/React.createElement(ShopScreen, {
     onBack: () => go('main'),
     onBuyPack: buyPack,
@@ -5879,22 +7101,28 @@ function App() {
   }, CHAR_RANKS[charPopup.char.rank].label), /*#__PURE__*/React.createElement("div", {
     className: "char-pop-desc"
   }, charPopup.pending ? `ステージ${charPopup.char.unlockStage}で仲間になる` : charPopup.char.desc))), zorumeFace && /*#__PURE__*/React.createElement(ZorumeOverlay, {
-    faceId: zorumeFace,
+    faceId: zorumeFace.faceId,
     onComplete: onZorumeComplete
   }), multFx && /*#__PURE__*/React.createElement(MultiplierOverlay, {
     base: multFx.base,
+    coinAdd: multFx.coinAdd || 0,
+    comboK: multFx.comboK || 1,
+    combo: !!multFx.combo,
     result: multFx.result,
     summon: multFx.summon,
     boxReward: multFx.boxReward,
     pool: BONUS_DICE_TABLES.jackpot,
-    betMult: bet,
+    kMult: multFx.kMult || 1,
+    cap: multFx.cap ?? Infinity,
+    k: multFx.k,
     onDone: total => {
       const summon = multFx.summon;
       const boxReward = multFx.boxReward;
+      const combo = multFx.combo;
       setMultFx(null);
       const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus));
       addCoins(g);
-      showToast(`ジャックポット！ +${fmt(g)} 🪙`);
+      showToast(`${combo ? '黄金律！' : 'ジャックポット！'} +${fmt(g)} 🪙`);
       if (summon) setTimeout(() => {
         addPiecesTo(summon.char.id, summon.amount);
         showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}`);
@@ -5905,9 +7133,13 @@ function App() {
       }, 700);
     }
   }), shieldFx && /*#__PURE__*/React.createElement(ShieldOverlay, {
+    k: shieldFx.k,
+    excessCoin: shieldFx.excessCoin || 0,
     onDone: () => {
+      const exc = shieldFx.excessCoin || 0;
       setShieldFx(false);
       grantShields(3);
+      if (exc > 0) addCoins(exc);
     }
   }), gachaFx && /*#__PURE__*/React.createElement(GachaOverlay, {
     tier: gachaFx.tier,
