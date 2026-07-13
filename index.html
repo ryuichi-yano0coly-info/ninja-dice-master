@@ -233,12 +233,19 @@
     .dice-row.n4 .die { width: clamp(38px, calc((100vw - 174px) / 4), 64px); }
     .dice-row.n5 { gap: 12px 6px; }
     .dice-row.n5 .die { width: clamp(28px, calc((100vw - 180px) / 5), 50px); }
-    /* 合体役（強襲/黄金律）成立時：参加ダイスを発光リング＋ステージ全体オーラでハイライト（resolveRollのcombo分岐で付与）。 */
+    /* 合体役（強襲/黄金律）成立時：参加ダイスを発光リング＋ステージ全体オーラでハイライト（resolveRollのcombo分岐で付与）。
+       ぞろ目／ジャックポット×2の成立面も同じパルスリングで役色ハイライトする（ステージ全体オーラは合体専用のまま＝dice-stage.combo）。 */
     .die.combo-lit, .d3-slot.combo-lit { animation: comboRing .9s ease-in-out infinite; }
-    @keyframes comboRing { 0%,100%{ filter: drop-shadow(0 0 4px var(--cc, #F0C040)); } 50%{ filter: drop-shadow(0 0 14px var(--cc, #F0C040)); } }
+    @keyframes comboRing {
+      0%,100%{ filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 5px var(--cc, #F0C040)); }
+      50%    { filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 16px var(--cc, #F0C040)); } }
     .dice-stage.combo::after { content:''; position:absolute; inset:-8%; z-index:0;
       background: radial-gradient(closest-side, color-mix(in srgb, var(--cc, #F0C040) 40%, transparent), transparent 72%);
       animation: fadeIn .3s ease; pointer-events:none; }
+    /* 通常役でコイン面が止まった時のハイライト：毎ロール発生するため、合体/ぞろ目より控えめ（パルスなし）。
+       背景（暖色/紺）と同化しないよう、白コア＋明るい金の二重グローで縁取る。 */
+    .die.coin-lit, .d3-slot.coin-lit {
+      filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 9px var(--cc, #FFE14D)); }
     .die .die-body { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
     .die .die-face {
       position: absolute; width: 50%; height: 50%;
