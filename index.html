@@ -298,7 +298,9 @@
     .dice-row.d3.n5 .d3-slot { margin: 0 -4px; }
     /* perspective は各スロットに置く（間の要素で3Dが潰れないように）。
        基準値は index_3d.html の俯瞰カメラ実験で確定した値（820px / 50% 28%）。
-       .d3-slot.bonus はセレクタ詳細度が高く常にこちらを上書きするので、ボーナス金ダイス（正面カメラ）は影響を受けない。
+       .d3-slot.bonus はセレクタ詳細度が高く常にこちらを上書きする：ボーナス金ダイス(BonusDie3D)はカメラ角度こそ
+       メインと共通(.d3-cam-tilt/.d3-yaw)だが、キューブが2倍近く大きい(120px)ため820pxのままだと魚眼歪みが強く出る。
+       1100pxを維持することで見た目の破綻を防ぐ（実機確認済み）。
        flex: 0 0 auto でflexboxによる暗黙のshrinkを禁止し、サイズは常に --d3 由来の値のみで決まるようにする。 */
     .d3-slot { position: relative; perspective: 820px; perspective-origin: 50% 28%; flex: 0 0 auto; }
     .d3-slot.bonus { perspective: 1100px; }
@@ -319,9 +321,7 @@
       100%{ transform: translateY(0); }
     }
     .d3-launch { transform-style: preserve-3d; }
-    /* .d3-tilt: ボーナス画面の金ダイス(BonusDie3D)専用の正面カメラ用飾り傾き（不変・維持）。 */
-    .d3-tilt { transform-style: preserve-3d; transform: rotateX(-15deg) rotateY(-12deg); }
-    /* .d3-cam-tilt / .d3-yaw: 本体メインダイス(Die3D)専用の俯瞰（桃鉄式）カメラ。
+    /* .d3-cam-tilt / .d3-yaw: メインダイス(Die3D)・ボーナス金ダイス(BonusDie3D)共通の俯瞰（桃鉄式）カメラ。
        DOM順は d3-launch > d3-cam-tilt > d3-yaw > d3-cube。全ダイス共通・固定角（個体差なし）。 */
     .d3-cam-tilt { transform-style: preserve-3d; transform: rotateX(-58deg); }
     .d3-yaw { transform-style: preserve-3d; }
