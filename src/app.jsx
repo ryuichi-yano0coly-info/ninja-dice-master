@@ -292,9 +292,14 @@ const STEAL_BUILDING = {
   statue:     { label:'石像',   coinRange:[15000,35000], boxChance:0.50 },
   garden:     { label:'庭園',   coinRange:[25000,55000], boxChance:0.22 },
 };
-const stealFromBuilding = (it) => {
+// k（成立面数）に応じて抽選レンジを上振れさせる。k省略時（強襲AssaultScreenなど）は全域（=k3扱い）。
+const STEAL_BAND_BY_K = { 3:[0.0, 1.0], 4:[0.5, 1.0], 5:[0.75, 1.0] };
+const stealFromBuilding = (it, k=3) => {
   const p = STEAL_BUILDING[it.id] || { coinRange:[20000,50000], boxChance:0.2 };
-  const coinGain = Math.floor(p.coinRange[0] + Math.random()*(p.coinRange[1]-p.coinRange[0]));
+  const [lo, hi] = p.coinRange;
+  const [b0, b1] = STEAL_BAND_BY_K[k] || STEAL_BAND_BY_K[3];
+  const lo2 = lo + (hi-lo)*b0, hi2 = lo + (hi-lo)*b1;
+  const coinGain = Math.floor(lo2 + Math.random()*(hi2-lo2));
   return { id:it.id, label:it.label, coinGain, hasBox: Math.random() < p.boxChance };
 };
 // SCREEN 07 — own castle parts (build)
@@ -322,8 +327,7 @@ const castleTypeForStage = (s) => STAGE_THEMES[Math.min(Math.max(1, s|0), MAX_ST
 const coinBaseForStage = (s) => { const n = Math.min(Math.max(1, s|0), MAX_STAGE); return 250 * n * (n + 1); };
 
 // ---- 役スケール（成立面数 k。k=3が現行基準。合体役=assault/goldruleには適用しない） ----
-const STEAL_TAPS_BY_K    = { 3:3, 4:4, 5:4 };   // タップ棟数（村は4棟が上限）
-const STEAL_K5_MULT      = 1.2;                 // k=5：総額の追加倍率
+// スティールのタップ数は常に3固定（STEAL_BAND_BY_K参照）。kによる上振れは抽選レンジ側で保証する。
 const ATTACK_DESTROY_BY_K= { 3:1, 4:2, 5:3 };   // 破壊棟数 = k−2
 const ATTACK_COIN_KMULT  = { 3:1, 4:1.5, 5:2 }; // coin部分のkスケール
 const ATTACK_COIN_CAP_FRAC = 0.5;               // 1回で奪える相手コイン割合の上限（50%ハードキャップ）
@@ -533,9 +537,8 @@ const CUBE_LAYOUT = [
   { slot:'right',  id:'steal' },  { slot:'left',   id:'shield' },
   { slot:'bottom', id:'jackpot' },{ slot:'back',   id:'coin' },
 ];
-const REST3D = { front:{x:0,y:0}, back:{x:0,y:180}, right:{x:0,y:-90}, left:{x:0,y:90}, top:{x:-90,y:0}, bottom:{x:90,y:0} };
 // 俯瞰（桃鉄式）カメラ専用のRESTテーブル：出目を「天面」に向ける回転目標。
-// BonusDie3D は正面カメラ(.d3-tilt)のままのため、上の REST3D を使い続ける（このテーブルは Die3D 専用）。
+// Die3D（メイン）と BonusDie3D（ボーナス金ダイス）の両方が共有する（カメラ・ヨーが共通のため）。
 const REST3D_TOP = { top:{x:0,y:0}, front:{x:90,y:0}, back:{x:90,y:180}, right:{x:90,y:-90}, left:{x:90,y:90}, bottom:{x:180,y:0} };
 const DIE3D_YAW = 32;   // 全ダイス共通・固定のヨー整列角（index_3d.html の実測値と同一）
 const SLOT_FOR_ID = { coin:'front', attack:'top', steal:'right', shield:'left', jackpot:'bottom' };
@@ -1165,19 +1168,21 @@ function ZorumeOverlay({ faceId, onComplete }) {
 const BONUS_SLOTS = ['front','top','right','left','bottom','back'];
 function BonusDie3D({ table, result, rollKey }) {
   const cubeRef = useRef(null), launchRef = useRef(null);
-  const rot = useRef({ rx:-20, ry:24 });
+  const rot = useRef(null);
+  // idleは天面に'top'枠が来る向き（メインダイスと同じ俯瞰RESTテーブル基準）。
+  if (rot.current === null) { const s = REST3D_TOP.top; rot.current = { rx:s.x, ry:s.y }; }
   useEffect(() => { if (cubeRef.current) cubeRef.current.style.transform = `rotateX(${rot.current.rx}deg) rotateY(${rot.current.ry}deg)`; }, []);
   useEffect(() => {
     if (!rollKey || !result) return;
     const resIdx = Math.max(0, table.findIndex(t => t.face === result.face));
-    const rest = REST3D[BONUS_SLOTS[resIdx % 6]];
-    const spinsX = 2 + Math.floor(Math.random()*3), spinsY = 3 + Math.floor(Math.random()*3);
+    const rest = REST3D_TOP[BONUS_SLOTS[resIdx % 6]];
+    const spinsX = 1 + Math.floor(Math.random()*2), spinsY = 2 + Math.floor(Math.random()*2);
     const rx0 = rot.current.rx, ry0 = rot.current.ry;
     const rxE = rx0 + norm360(rest.x - rx0) + spinsX*360;
     const ryE = ry0 + norm360(rest.y - ry0) + spinsY*360;
     const rxA = rx0 + 0.84*(rxE-rx0), ryA = ry0 + 0.84*(ryE-ry0);
     rot.current = { rx:rxE, ry:ryE };
-    const dur = 1.5;
+    const dur = 0.9;   // 俯瞰演出：メインダイスと同じ1個あたりの尺
     const c = cubeRef.current, l = launchRef.current; if (!c || !l) return;
     c.style.setProperty('--rx0', rx0+'deg'); c.style.setProperty('--ry0', ry0+'deg');
     c.style.setProperty('--rxA', rxA+'deg'); c.style.setProperty('--ryA', ryA+'deg');
@@ -1188,11 +1193,13 @@ function BonusDie3D({ table, result, rollKey }) {
   return (
     <div className="d3-slot bonus">
       <div className="d3-launch" ref={launchRef}>
-        <div className="d3-tilt">
-          <div className="d3-cube bonus" ref={cubeRef}>
-            {BONUS_SLOTS.map((slot, i) => (
-              <div key={slot} className={"d3-face f-"+slot}><span className="bd3-label">{table[i] ? table[i].label : ''}</span></div>
-            ))}
+        <div className="d3-cam-tilt">
+          <div className="d3-yaw" style={{ transform:`rotateY(${DIE3D_YAW}deg)` }}>
+            <div className="d3-cube bonus" ref={cubeRef}>
+              {BONUS_SLOTS.map((slot, i) => (
+                <div key={slot} className={"d3-face f-"+slot}><span className="bd3-label">{table[i] ? table[i].label : ''}</span></div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1222,7 +1229,8 @@ function BonusRoll({ trigger, stage=3, k=3, onComplete }) {
     const t = setTimeout(() => {
       const res = table[Math.floor(Math.random()*table.length)];
       setResult(res); setRollKey(1); SFX.roll();
-      timerRef.current = setTimeout(() => { setPhase('result'); SFX.coin(); }, 1650);
+      // 俯瞰演出：1個0.9秒+着地後の余裕150ms（メインダイスの (n-1)*50+900+150 相当、n=1）
+      timerRef.current = setTimeout(() => { setPhase('result'); SFX.coin(); }, 1050);
     }, 500);
     return () => clearTimeout(t);
   }, []);
@@ -1253,7 +1261,7 @@ function BonusRoll({ trigger, stage=3, k=3, onComplete }) {
         <div className="bonus-reward">
           <div className="br-formula">
             <span className="br-term"><Img src={IMG+'ui/Koban_Small.png'} className="brf-ico" fallback={<span>🪙</span>} />{fmt(base)}</span>
-            <span className="br-op">× {result.multiplier}</span>
+            <span className="br-op">× {result.multiplier ?? result.coinMultiplier}</span>
           </div>
           <div className="br-eq gold-text">= +{fmt(gainDisplay)} 🪙</div>
         </div>}
@@ -1530,7 +1538,7 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', onReceive,
   const [swiping, setSwiping] = useState(null);// 盗み演出中の建物id
   const [boxGot, setBoxGot] = useState(null);  // 宝箱GET演出中の建物id
   const [boxRewards, setBoxRewards] = useState([]); // 宝箱の中身（カード or 仲間かけら／同時には出ない）
-  const target = STEAL_TAPS_BY_K[k] || 3;      // タップ棟数：k=3→3、k=4/5→4（村は4棟が上限）
+  const target = 3;                            // タップ棟数：常に3固定（kは抽選レンジの上振れ保証にのみ使う）
 
   useEffect(() => { const t = setTimeout(()=>setPhase('selecting'), 600); return ()=>clearTimeout(t); }, []);
 
@@ -1540,12 +1548,12 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', onReceive,
     if (phase!=='selecting' || swiping || pickedIds.includes(it.id) || picks.length>=target) return;
     setSwiping(it.id); SFX.steal();   // 盗む演出 → 完了でコイン確定
   };
-  // 影のくノ一（autoLastSpot）はtarget件盗んだ後、残り1件も自動で強奪（target<4のときのみ。k≥4は既に全棟タップ済みで対象なし＝二重加算しない）。
+  // 影のくノ一（autoLastSpot）はtarget（=3）件盗んだ後、残り1件も自動で強奪（kに関わらず発動）。
   const finalizeSwipe = (it) => {
-    let next = [...picks, stealFromBuilding(it)];
-    if (next.length === target && autoLastSpot && target < 4) {
+    let next = [...picks, stealFromBuilding(it, k)];
+    if (next.length === target && autoLastSpot) {
       const rest = village.find(v => !next.some(p => p.id === v.id));
-      if (rest) next = [...next, { ...stealFromBuilding(rest), auto:true }];
+      if (rest) next = [...next, { ...stealFromBuilding(rest, k), auto:true }];
     }
     const gotBox = next.slice(picks.length).some(r=>r.hasBox);
     setPicks(next); setSwiping(null); SFX.coin();
@@ -1560,7 +1568,7 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', onReceive,
 
   const subtotal = picks.reduce((s,r)=>s+r.coinGain, 0);
   const boxCount = picks.filter(p=>p.hasBox).length;   // 宝箱の数＝獲得カード枚数
-  const total = Math.round(subtotal * stealMult * (k>=5 ? STEAL_K5_MULT : 1));   // 装備キャラ(stealMult) × 5面ボーナス
+  const total = Math.round(subtotal * stealMult);   // 装備キャラ(stealMult)。kによる上振れは抽選レンジ側で反映済み
   const totalDisplay = useCountUp(total, 1000, phase==='summary');
   const picksLeft = Math.max(0, target - picks.length);
 
@@ -1610,9 +1618,10 @@ function StealScreen({ opponentName, opponentCoins=0, opponentImg='', onReceive,
         ? <div className="steal-summary-overlay">
             <div className="steal-summary">
               <div className="ss-row">{picks.length}か所の合計: <b>+{fmt(subtotal)}</b></div>
-              {autoLastSpot && target < 4 && <div className="ss-row mult">🥷 影のくノ一：最後の1か所も強奪！</div>}
+              {autoLastSpot && <div className="ss-row mult">🥷 影のくノ一：最後の1か所も強奪！</div>}
               {stealMult>1 && <div className="ss-row mult">× {stealMult}倍（仲間）</div>}
-              {k>=5 && <div className="ss-row mult">⭐ 5面ボーナス ×{STEAL_K5_MULT}</div>}
+              {k===4 && <div className="ss-row mult">⚒️ 業物：下振れなし</div>}
+              {k===5 && <div className="ss-row mult">✨ 神業：上振れ抽選</div>}
               <div className="ss-total gold-text">= +{fmt(totalDisplay)} 🎉</div>
               {boxRewards.length>0 &&
                 <div className="steal-rewards">
@@ -2248,8 +2257,17 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
             ))}
             <span className="raid-hptext">ボスHP {hp}%</span>
           </div>
+          {/* HPバーは右（HP高）→左（HP低）へ減っていくため、報酬チップも同じ向き（左=撃破/低HP側 → 右=高HP側）に並べる */}
           <div className="raid-ms-chips">
-            {RAID_MILESTONES.map(m => {
+            <div className={"raid-ms-chip clear"
+              + (claimedThis ? ' hit claimed' : defeated ? ' hit ready' : '')
+              + ((defeatFx || claimBurst) ? ' pop' : '')}>
+              <span className="msc-pct">撃破</span>
+              <span className="msc-amt"><Img src={IMG+'ui/Koban_Small.png'} className="msc-ico" fallback={<span>🪙</span>} />{fmt(raidBossCoin(boss))}</span>
+              <span className="msc-amt"><Img src={IMG+'ui/Icon_Dice.png'} className="msc-ico" fallback={<span>🎲</span>} />{raidBossRolls(boss)}</span>
+              {claimedThis && <span className="msc-check">✓</span>}
+            </div>
+            {[...RAID_MILESTONES].reverse().map(m => {
               const hit = milestonesHit.includes(m);
               return (
                 <div key={m} className={"raid-ms-chip" + (hit ? ' hit' : '') + (msFx && msFx.hits.includes(m) ? ' pop' : '')}>
@@ -2259,14 +2277,6 @@ function ClanRaidScreen({ onBack, addCoins, grantRolls, showToast, tickets, spen
                 </div>
               );
             })}
-            <div className={"raid-ms-chip clear"
-              + (claimedThis ? ' hit claimed' : defeated ? ' hit ready' : '')
-              + ((defeatFx || claimBurst) ? ' pop' : '')}>
-              <span className="msc-pct">撃破</span>
-              <span className="msc-amt"><Img src={IMG+'ui/Koban_Small.png'} className="msc-ico" fallback={<span>🪙</span>} />{fmt(raidBossCoin(boss))}</span>
-              <span className="msc-amt"><Img src={IMG+'ui/Icon_Dice.png'} className="msc-ico" fallback={<span>🎲</span>} />{raidBossRolls(boss)}</span>
-              {claimedThis && <span className="msc-check">✓</span>}
-            </div>
           </div>
         </div>
         <div className="raid-log">{log}</div>
@@ -2927,7 +2937,7 @@ function App() {
     bonus:        { trigger: qp.get('trigger') || 'attack' },
     attackSelect: { bonusResult: BONUS_DICE_TABLES.attack[5] },
     attackResult: { attackResult: { success:true, coinGain:75000, partLabel:'武家屋敷' } },
-    steal:        { stealMultiplier:2 },
+    steal:        { stealMultiplier:2, k: parseInt(qp.get('k'), 10) || 3 },  // ?k=4|5 で役スケール（抽選レンジ上振れ）をプレビュー
     assault:      (() => {
       const attackFace = BONUS_DICE_TABLES.attack[5];  // coinRate 0.15 / damage 2
       return { attackFace, aFull: 60000, opponentShields: 1 };
