@@ -334,10 +334,71 @@ const COMBO_DEFS = [{
   route: 'goldrule'
 } // 黄金律＝コイン＋ジャックポット
 ];
-const COMBO_K = 1.15; // 合体成立時の一律ボーナス倍率
-const GOLDRULE_COIN_ADD = 1; // 黄金律：coinBaseForStage(stage)×この係数を小判上乗せ
+const COMBO_K = 1.15; // 合体成立時の一律ボーナス倍率（強襲のみで使用。招福は千両箱報酬に差し替え済み）
 const ASSAULT_SHIELD_STEAL_DECAY = 0.6; // 強襲：シールドで防がれた時も盗みは×0.6で成立
 const ASSAULT_SUMMARY_HOLD = 2200; // 強襲：サマリー表示から自動で受け取るまでの時間(ms)（タップでスキップ可）
+
+/* ---- 招福（合体役 id='goldrule' の表示名。内部idは維持）：三つの玉手箱から1つ選ぶ非コイン報酬 ----
+   中身は「導入」で報酬プールとしてのみ提示し、以降どの箱に何が入ったかは伏せる（玉手箱シャッフル方式）。
+   かけら箱は箱選択→キャラ選択の二段。GOLDだけは決定的にRNGなし＝onCombo時（buildShofuku）に確定し、
+   render内では抽選しない。箱↔報酬の対応（permutation）はShofukuOverlay側でシャッフル演出開始時に
+   一度だけ乱数生成し、以後固定（タップ時に再抽選しない）。 */
+const SHOFUKU_ROLL = {
+  4: 60,
+  5: 90
+};
+const SHOFUKU_PIECE = {
+  4: {
+    normal: 40,
+    legend: 18
+  },
+  5: {
+    normal: 60,
+    legend: 26
+  }
+};
+const SHOFUKU_RAID = {
+  4: {
+    tickets: 1,
+    cards: 2,
+    gold: 0.40,
+    goldGuarantee: 0
+  },
+  5: {
+    tickets: 2,
+    cards: 3,
+    gold: 0.40,
+    goldGuarantee: 1
+  }
+};
+const SHOFUKU_COIN_MULT = {
+  4: 8,
+  5: 12
+}; // かけら対象0体時のコイン差し替え額 = coinBaseForStage(stage)×これ
+const SHOFUKU_INTRO_MS = 1000; // 招福：導入（報酬プレビュー→玉手箱へ吸い込み）の尺
+const SHOFUKU_SHUFFLE_MS = 1500; // 招福：玉手箱シャッフル演出の尺
+const SHOFUKU_BOXES = [{
+  id: 'roll',
+  label: '福ロール',
+  emoji: '🎲',
+  closed: 'ui/Tamatebako_Closed.png',
+  open: 'ui/Tamatebako_Open.png',
+  accent: '#F0C040'
+}, {
+  id: 'piece',
+  label: '招福かけら',
+  emoji: '🧩',
+  closed: 'ui/Tamatebako_Closed.png',
+  open: 'ui/Tamatebako_Open.png',
+  accent: '#8B5CF6'
+}, {
+  id: 'raid',
+  label: '討伐と絵札',
+  emoji: '🎟️',
+  closed: 'ui/Tamatebako_Closed.png',
+  open: 'ui/Tamatebako_Open.png',
+  accent: '#DC2626'
+}];
 
 /* ---- 役ベースの抽選 ----
    各ダイスを独立に振るのではなく、まず「役」を出現確率で決め、
@@ -520,7 +581,7 @@ const DEBUG_HANDS = [{
   faces: [D.ATTACK, D.ATTACK, D.STEAL, D.STEAL]
 }, {
   key: 'goldrule',
-  label: '🪙⭐ 黄金律（合体・4個）',
+  label: '🪙⭐ 招福（合体・4個）',
   faces: [D.COIN, D.COIN, D.JACKPOT, D.JACKPOT]
 }, {
   key: 'assault5',
@@ -528,13 +589,16 @@ const DEBUG_HANDS = [{
   faces: [D.ATTACK, D.ATTACK, D.ATTACK, D.STEAL, D.STEAL]
 }, {
   key: 'goldrule5',
-  label: '🪙⭐ 黄金律（合体・5個）',
+  label: '🪙⭐ 招福（合体・5個）',
   faces: [D.COIN, D.COIN, D.COIN, D.JACKPOT, D.JACKPOT]
 }, {
   key: 'random',
   label: '🎲 ランダム',
   faces: null
 }];
+
+// DEBUG — 画面別デバッグパネル（🐞 fab）を表示する画面（ハブ画面のみ。オーバーレイ系画面では非表示）
+const DEBUG_FAB_SCREENS = new Set(['main', 'castle', 'clan', 'characters', 'collection', 'shop']);
 
 // Shared face → color / emoji / label maps (used across screens)
 const FACE_COLOR = {
@@ -786,46 +850,8 @@ const CASTLE_ATTACK_PARTS = [{
   state: 'intact'
 }];
 
-// SCREEN 06 — steal locations (matches BG_Steal layout)
-const STEAL_LOCATIONS = [{
-  id: 'manor',
-  label: '屋敷',
-  icon: IMG + 'ui/StealIcon_Manor.png',
-  emoji: '🏯',
-  coinRange: [30000, 60000],
-  boxChance: 0.15
-}, {
-  id: 'storehouse',
-  label: '蔵',
-  icon: IMG + 'ui/StealIcon_Storehouse.png',
-  emoji: '🏬',
-  coinRange: [50000, 90000],
-  boxChance: 0.30
-}, {
-  id: 'shrine',
-  label: '神社',
-  icon: IMG + 'ui/StealIcon_Shrine.png',
-  emoji: '⛩️',
-  coinRange: [10000, 30000],
-  boxChance: 0.50
-}, {
-  id: 'market',
-  label: '城下町',
-  icon: IMG + 'ui/StealIcon_Market.png',
-  emoji: '🏮',
-  coinRange: [25000, 55000],
-  boxChance: 0.15
-}];
-const generateStealResults = ids => ids.map(id => {
-  const loc = STEAL_LOCATIONS.find(l => l.id === id);
-  const coinGain = Math.floor(loc.coinRange[0] + Math.random() * (loc.coinRange[1] - loc.coinRange[0]));
-  return {
-    ...loc,
-    coinGain,
-    hasBox: Math.random() < loc.boxChance
-  };
-});
 // スティール：相手の村の建物ごとの奪取パラメータ（建物を直接タップして盗む）
+// （旧 STEAL_LOCATIONS / generateStealResults は STEAL_BUILDING 方式への統一で未使用となったため削除済み）
 const STEAL_BUILDING = {
   castle: {
     label: '天守閣',
@@ -833,7 +859,7 @@ const STEAL_BUILDING = {
     boxChance: 0.15
   },
   storehouse: {
-    label: '蔵',
+    label: '市場',
     coinRange: [50000, 90000],
     boxChance: 0.38
   },
@@ -928,9 +954,9 @@ const freshCastleParts = () => makeCastleParts().map(p => ({
 }));
 const fmt = n => Math.round(n).toLocaleString('en-US');
 const CASTLE_IMG = {
-  himeji: IMG + 'building/himeji/Castle.png',
-  windsor: IMG + 'building/windsor/Castle.png',
-  tajmahal: IMG + 'building/tajmahal/Castle.png'
+  himeji: IMG + 'building/himeji/himeji_Castle_5.png',
+  windsor: IMG + 'building/windsor/windsor_Castle_5.png',
+  tajmahal: IMG + 'building/tajmahal/tajmahal_Castle_5.png'
 };
 // 10ステージ＝10テーマ（世界の名所ツアー）。stage1から順に切り替わる。
 const STAGE_THEMES = ['himeji', 'windsor', 'tajmahal', 'egypt', 'china', 'greece', 'aztec', 'russia', 'arabia', 'dragon'];
@@ -1059,23 +1085,21 @@ const CASTLE_NAME = {
   windsor: 'ウィンザー城',
   tajmahal: 'タージ・マハル'
 };
-// 城テーマごとの建設段階数（姫路のみ5段階=Castle_1〜4+完成形、他は3段階=Castle_1〜2+完成形）
-const CASTLE_BUILD_STEPS = {
-  himeji: 4
-};
-// 城の段階画像パスを生成: building/<theme>/Castle_1..N.png + 完成形 building/<theme>/Castle.png
+// 城テーマごとの建設段階数（全テーマ共通5段階=Castle_1〜4+完成形）
+const CASTLE_BUILD_STEPS = {};
+// 城の段階画像パスを生成: building/<theme>/<theme>_Castle_1..5.png（完成形=5。Unity Addressable対応のためファイル名にtheme接頭辞を付与）
 const castleStagesForTheme = theme => {
-  const steps = CASTLE_BUILD_STEPS[theme] ?? 2;
+  const steps = (CASTLE_BUILD_STEPS[theme] ?? 4) + 1; // +1 = 完成形
   const stages = [];
-  for (let i = 1; i <= steps; i++) stages.push(IMG + 'building/' + theme + '/Castle_' + i + '.png');
-  stages.push(IMG + 'building/' + theme + '/Castle.png');
+  for (let i = 1; i <= steps; i++) stages.push(IMG + 'building/' + theme + '/' + theme + '_Castle_' + i + '.png');
   return stages;
 };
-// 付帯建築（蔵/石像/庭園）は全テーマ共通で3段階: building/<theme>/<Type>_1..3.png
+// 付帯建築（市場/石像/庭園）は全テーマ共通で5段階: building/<theme>/<theme>_<Type>_1..5.png
+// storehouse: 内部idはセーブ互換のため維持（表示・画像のみ市場化）
 const buildingStagesForTheme = theme => ({
-  storehouse: [1, 2, 3].map(i => IMG + 'building/' + theme + '/Storehouse_' + i + '.png'),
-  statue: [1, 2, 3].map(i => IMG + 'building/' + theme + '/Statue_' + i + '.png'),
-  garden: [1, 2, 3].map(i => IMG + 'building/' + theme + '/Garden_' + i + '.png')
+  storehouse: [1, 2, 3, 4, 5].map(i => IMG + 'building/' + theme + '/' + theme + '_Market_' + i + '.png'),
+  statue: [1, 2, 3, 4, 5].map(i => IMG + 'building/' + theme + '/' + theme + '_Statue_' + i + '.png'),
+  garden: [1, 2, 3, 4, 5].map(i => IMG + 'building/' + theme + '/' + theme + '_Garden_' + i + '.png')
 });
 // 建設画面の背景（城テーマに合わせる）
 const CASTLE_BG = {
@@ -1118,14 +1142,14 @@ Object.keys(NEW_THEMES).forEach(key => {
   CASTLE_NAME[key] = NEW_THEMES[key].name;
   CASTLE_BG[key] = IMG + 'bg/BG_Castle_' + NEW_THEMES[key].pfx + '.png';
 });
-// 城テーマごとの建築段階画像（城・蔵/石像/庭園ともに building/<theme>/ 配下を参照。全10テーマ共通ロジックで生成）
+// 城テーマごとの建築段階画像（城・市場/石像/庭園ともに building/<theme>/ 配下を参照。全10テーマ共通ロジックで生成）
 const CASTLE_STAGES = {};
 const BUILDING_STAGES = {};
 STAGE_THEMES.forEach(theme => {
   CASTLE_STAGES[theme] = castleStagesForTheme(theme);
   BUILDING_STAGES[theme] = buildingStagesForTheme(theme);
 });
-// 指定テーマでのその建物の段階配列（城はCASTLE_STAGES、蔵/石像/庭園はBUILDING_STAGES）
+// 指定テーマでのその建物の段階配列（城はCASTLE_STAGES、市場/石像/庭園はBUILDING_STAGES）
 const themedStagesFor = (itemId, theme) => itemId === 'castle' ? CASTLE_STAGES[theme] : (BUILDING_STAGES[theme] || BUILDING_STAGES.himeji)[itemId];
 
 /* ---- Coin Master style build items (each levels up through visual stages) ---- */
@@ -1139,8 +1163,8 @@ const BUILD_ITEMS = [{
   stages: CASTLE_STAGES.himeji
 }, {
   id: 'storehouse',
-  label: '蔵',
-  emoji: '🏬',
+  label: '市場',
+  emoji: '⛺',
   x: '18%',
   y: '60%',
   w: 112,
@@ -1695,14 +1719,12 @@ function MainRoll({
   auto,
   setAuto,
   rollAnim = 'toss',
-  onToggleRollAnim,
   paused = false,
   equipped = null,
   freeRollChance = 0,
   cardDropBonus = 0,
-  onResetShop,
-  onRerollShop,
-  onDebugTickets
+  registerMainDebug,
+  noPodium = false
 }) {
   const freeRollRef = useRef(freeRollChance);
   freeRollRef.current = freeRollChance; // 招き猫系：確率で無料ロール
@@ -1726,13 +1748,12 @@ function MainRoll({
     gain: 0,
     key: 0
   });
-  const [showDebug, setShowDebug] = useState(() => new URLSearchParams(window.location.search).has('debugopen'));
-  const [noPodium, setNoPodium] = useState(false); // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
   // 効果を発揮している出目のハイライト：{ cc, indices:Set<number>, kind:'combo'|'zorome'|'jpcombo'|'normal' }
   // resolveRollの各分岐（combo/zorome/jpcombo/通常）で設定。kind==='combo'のみステージ全体オーラ（dice-stage.combo::after）も点灯し、
   // kind==='normal'（通常役のコインハイライト）は控えめな静的グロー（.coin-lit）、それ以外は既存のパルスリング（.combo-lit）を使う。
   const [comboFx, setComboFx] = useState(null);
   const [comboCutin, setComboCutin] = useState(null); // 合体役カットイン：'assault'|'goldrule'|null（表示中はonComboを呼ばずisRollingも解放しない）
+  const comboKRef = useRef(DICE_MIN); // 合体役の成立面数k（4/5）。resolveRollのcombo分岐で設定→onComboCutinDoneがonComboへ渡す
   // auto は App 側で保持（ボーナス/アタック等で MainRoll がアンマウントされても状態を維持する）
 
   // 常時ループの桜吹雪演出：マウント時に一度だけランダム生成（再レンダリングでリセットさせない）
@@ -1923,8 +1944,9 @@ function MainRoll({
         kind: 'combo'
       });
       setMood('excited');
-      setSpeech(ev.comboId === 'assault' ? '強襲！！' : '黄金律！！');
+      setSpeech(ev.comboId === 'assault' ? '強襲！！' : '招福！！');
       SFX.zorume();
+      comboKRef.current = results.length; // 成立面数k（4/5）を保持し、カットイン終了後にonComboへ渡す
       setComboCutin(ev.comboId);
       return;
     }
@@ -2027,7 +2049,7 @@ function MainRoll({
     const comboId = comboCutin;
     setComboCutin(null);
     if (comboId === 'assault') {
-      onCombo('assault'); // 画面遷移でアンマウント。以降このコールバック内でsetStateしない。
+      onCombo('assault', comboKRef.current); // 画面遷移でアンマウント。以降このコールバック内でsetStateしない。
       return;
     }
     if (comboId === 'goldrule') {
@@ -2037,10 +2059,39 @@ function MainRoll({
       setSpeech('');
       setPhases(idlePhases(diceCount));
       setComboFx(null);
-      onCombo('goldrule'); // MultiplierOverlay（JP演出）へ合流
+      onCombo('goldrule', comboKRef.current); // ShofukuOverlay（招福・千両箱演出）へ合流
     }
   }, [comboCutin, onCombo, diceCount]);
   doRollRef.current = doRoll;
+
+  // DEBUG — 役を強制（App直下のDebugPanelから呼ばれる）。ロジックは旧・main専用パネルのonClickと同一。
+  // refs参照（diceCountRef/doRollRef/pendingForcedRef）でstale closureを回避する。
+  const forceHand = useCallback(h => {
+    if (rollingRef.current) return;
+    const dc = diceCountRef.current;
+    const isPureZorome = h.faces && h.faces.every(f => f.id === h.faces[0].id);
+    if (isPureZorome && h.faces.length !== dc) {
+      // ぞろ目系は現在のdiceCount長へパディング（k=diceCountで検証可能。diceCount自体は変えない）
+      doRollRef.current && doRollRef.current(Array(dc).fill(h.faces[0]));
+    } else if (h.faces && h.faces.length !== dc && setDiceCount) {
+      // 強襲/黄金律など4/5個構成の役はダイス数を自動で合わせてから振る。
+      pendingForcedRef.current = {
+        faces: h.faces,
+        delay: 0
+      };
+      setDiceCount(h.faces.length);
+    } else {
+      doRollRef.current && doRollRef.current(h.faces || undefined);
+    }
+  }, [setDiceCount]);
+  useEffect(() => {
+    if (!registerMainDebug) return;
+    registerMainDebug({
+      forceHand
+    });
+    return () => registerMainDebug(null);
+  }, [registerMainDebug, forceHand]);
+
   // auto-roll loop — depends only on auto/isRolling (NOT on doRoll/game identity),
   // so the 350ms timer isn't reset by App re-renders (e.g. coin count-up animation).
   useEffect(() => {
@@ -2273,62 +2324,7 @@ function MainRoll({
   }), comboCutin && /*#__PURE__*/React.createElement(ComboCutin, {
     comboId: comboCutin,
     onComplete: onComboCutinDone
-  }), /*#__PURE__*/React.createElement("button", {
-    className: "debug-fab",
-    onClick: () => setShowDebug(v => !v),
-    title: "デバッグ"
-  }, "🐞"), showDebug && /*#__PURE__*/React.createElement("div", {
-    className: "debug-panel"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "debug-head"
-  }, "🐞 デバッグ：役を指定"), DEBUG_HANDS.map(h => /*#__PURE__*/React.createElement("button", {
-    key: h.key,
-    className: "debug-item",
-    disabled: isRolling,
-    onClick: () => {
-      setShowDebug(false);
-      const isPureZorome = h.faces && h.faces.every(f => f.id === h.faces[0].id);
-      if (isPureZorome && h.faces.length !== diceCount) {
-        // ぞろ目系は現在のdiceCount長へパディング（k=diceCountで検証可能。diceCount自体は変えない）
-        doRoll(Array(diceCount).fill(h.faces[0]));
-      } else if (h.faces && h.faces.length !== diceCount && setDiceCount) {
-        // 強襲/黄金律など4/5個構成の役はダイス数を自動で合わせてから振る。
-        // diceCountが実際に揃った時点（[diceCount]のuseEffect）でpendingForcedRef側が消費して振る。
-        pendingForcedRef.current = {
-          faces: h.faces,
-          delay: 0
-        };
-        setDiceCount(h.faces.length);
-      } else {
-        doRoll(h.faces || undefined);
-      }
-    }
-  }, h.label)), onToggleRollAnim && /*#__PURE__*/React.createElement("button", {
-    className: "debug-item",
-    disabled: isRolling,
-    onClick: onToggleRollAnim
-  }, "🎬 ダイス演出: ", rollAnim === '3d' ? '3D立体' : rollAnim === 'toss' ? '飛ばし（下から）' : '回転（従来）'), /*#__PURE__*/React.createElement("button", {
-    className: "debug-item",
-    onClick: () => setNoPodium(v => !v)
-  }, "🍽️ 台座: ", noPodium ? 'OFF' : 'ON'), onRerollShop && /*#__PURE__*/React.createElement("button", {
-    className: "debug-item",
-    onClick: () => {
-      onRerollShop();
-    }
-  }, "🛒 ショップ再ロール（4種入替）"), onResetShop && /*#__PURE__*/React.createElement("button", {
-    className: "debug-item",
-    onClick: () => {
-      onResetShop();
-    }
-  }, "🛒 ショップ購入リセット"), onDebugTickets && /*#__PURE__*/React.createElement("button", {
-    className: "debug-item",
-    onClick: () => {
-      onDebugTickets();
-    }
-  }, "🎟️ レイドチケット +5"), /*#__PURE__*/React.createElement("button", {
-    className: "debug-close",
-    onClick: () => setShowDebug(false)
-  }, "閉じる")));
+  }));
 }
 
 /* 合体役（強襲/黄金律）成立時のカットイン。ZorumeOverlay/ScrollBannerと同じ「見得」のリズム（約1.3秒）だが、
@@ -2338,12 +2334,14 @@ const COMBO_CUTIN_DEF = {
   assault: {
     title: '強襲！！',
     grad: `linear-gradient(135deg, ${FACE_COLOR.attack}, ${FACE_COLOR.steal})`,
-    faces: ['attack', 'steal']
+    faces: ['attack', 'steal'],
+    badge: '合体役 ×1.15'
   },
   goldrule: {
-    title: '黄金律！！',
+    title: '招福！！',
     grad: `linear-gradient(135deg, var(--gold-light), ${FACE_COLOR.jackpot})`,
-    faces: ['coin', 'jackpot']
+    faces: ['coin', 'jackpot'],
+    badge: '黄金の千両箱'
   }
 };
 function ComboCutin({
@@ -2402,7 +2400,7 @@ function ComboCutin({
     style: {
       background: def.grad
     }
-  }, "合体役 ×1.15")), /*#__PURE__*/React.createElement("div", {
+  }, def.badge)), /*#__PURE__*/React.createElement("div", {
     className: "cc-flank b"
   }, /*#__PURE__*/React.createElement(Img, {
     src: imgB,
@@ -2786,10 +2784,10 @@ function AttackSelect({
   // opponent's village（建設画面と同じ見た目）。建物を直接タップして攻撃。
   const [village] = useState(() => themedVillage(stage, {
     levels: {
-      castle: 3,
-      storehouse: 2,
+      castle: 4,
+      storehouse: 3,
       statue: 2,
-      garden: 1
+      garden: 2
     }
   }));
   const [hit, setHit] = useState(null); // 攻撃中の建物（起点タップ）
@@ -3002,10 +3000,10 @@ function AssaultScreen({
 }) {
   const [village] = useState(() => themedVillage(stage, {
     levels: {
-      castle: 3,
-      storehouse: 2,
+      castle: 4,
+      storehouse: 3,
       statue: 2,
-      garden: 1
+      garden: 2
     }
   }));
   const [phase, setPhase] = useState('intro'); // intro → selecting → summary
@@ -3204,10 +3202,10 @@ function StealScreen({
   // 相手の村（建設画面と同じ配置）を表示し、建物を直接タップして盗む。
   const [village] = useState(() => themedVillage(stage, {
     levels: {
-      castle: 3,
-      storehouse: 2,
+      castle: 4,
+      storehouse: 3,
       statue: 2,
-      garden: 1
+      garden: 2
     }
   }));
   const [phase, setPhase] = useState('intro'); // intro → selecting → summary
@@ -3432,7 +3430,7 @@ function StealScreen({
 /* ============================================================
    SCREEN 07 — CASTLE BUILD
    ============================================================ */
-// Build a village whose 天守閣 AND 蔵/石像/庭園 all match the stage's castle theme (Himeji/Windsor/TajMahal)
+// Build a village whose 天守閣 AND 市場/石像/庭園 all match the stage's castle theme (Himeji/Windsor/TajMahal)
 const themedVillage = (stage, opts = {}) => {
   const theme = castleTypeForStage(stage);
   return makeVillage(opts).map(it => {
@@ -3445,6 +3443,25 @@ const themedVillage = (stage, opts = {}) => {
     };
   });
 };
+
+// 建物レベル表示：達成レベル分を塗り星、残りを空星で（例: Lv2/3 → ★★☆）
+function LevelStars({
+  level,
+  max
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "pc-stars"
+  }, Array.from({
+    length: max
+  }).map((_, i) => /*#__PURE__*/React.createElement(Img, {
+    key: i,
+    src: IMG + (i < level ? 'ui/Star_Filled.png' : 'ui/Star_Empty.png'),
+    className: "pc-star-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "pc-star-fallback"
+    }, i < level ? '★' : '☆')
+  })));
+}
 function CastleScreen({
   game,
   spendCoins,
@@ -3574,14 +3591,10 @@ function CastleScreen({
       }, it.emoji)
     }), /*#__PURE__*/React.createElement("div", {
       className: "pc-lvl"
-    }, "Lv", it.level, "/", itemMax(it)), /*#__PURE__*/React.createElement("div", {
-      className: "pc-dots"
-    }, Array.from({
-      length: itemMax(it)
-    }).map((_, i) => /*#__PURE__*/React.createElement("i", {
-      key: i,
-      className: i < it.level ? 'on' : ''
-    }))), done ? /*#__PURE__*/React.createElement("div", {
+    }, "Lv", it.level + 1, "/", it.stages.length), /*#__PURE__*/React.createElement(LevelStars, {
+      level: it.level + 1,
+      max: it.stages.length
+    }), done ? /*#__PURE__*/React.createElement("div", {
       className: "pc-state",
       style: {
         color: '#059669'
@@ -3672,15 +3685,15 @@ const CARD_SETS = [{
   cards: [{
     id: 'himeji',
     name: '姫路城',
-    img: IMG + 'building/himeji/Castle.png'
+    img: IMG + 'building/himeji/himeji_Castle_5.png'
   }, {
     id: 'windsor',
     name: 'ウィンザー城',
-    img: IMG + 'building/windsor/Castle.png'
+    img: IMG + 'building/windsor/windsor_Castle_5.png'
   }, {
     id: 'taj',
     name: 'タージ・マハル',
-    img: IMG + 'building/tajmahal/Castle.png'
+    img: IMG + 'building/tajmahal/tajmahal_Castle_5.png'
   }, {
     id: 'chest',
     name: '埋蔵金',
@@ -3698,15 +3711,15 @@ const CARD_SETS = [{
   cards: [{
     id: 'egypt',
     name: 'ピラミッド',
-    img: IMG + 'building/egypt/Castle.png'
+    img: IMG + 'building/egypt/egypt_Castle_5.png'
   }, {
     id: 'china',
     name: '紫禁城',
-    img: IMG + 'building/china/Castle.png'
+    img: IMG + 'building/china/china_Castle_5.png'
   }, {
     id: 'aztec',
     name: '太陽の神殿',
-    img: IMG + 'building/aztec/Castle.png'
+    img: IMG + 'building/aztec/aztec_Castle_5.png'
   }, {
     id: 'sphinx',
     name: '黄金のスフィンクス',
@@ -3724,19 +3737,19 @@ const CARD_SETS = [{
   cards: [{
     id: 'greece',
     name: 'パルテノン神殿',
-    img: IMG + 'building/greece/Castle.png'
+    img: IMG + 'building/greece/greece_Castle_5.png'
   }, {
     id: 'russia',
     name: '聖ワシリイ大聖堂',
-    img: IMG + 'building/russia/Castle.png'
+    img: IMG + 'building/russia/russia_Castle_5.png'
   }, {
     id: 'arabia',
     name: '砂漠の宮殿',
-    img: IMG + 'building/arabia/Castle.png'
+    img: IMG + 'building/arabia/arabia_Castle_5.png'
   }, {
     id: 'dragoncastle',
     name: '龍宮天空城',
-    img: IMG + 'building/dragon/Castle.png'
+    img: IMG + 'building/dragon/dragon_Castle_5.png'
   }, {
     id: 'risingdragon',
     name: '昇り龍',
@@ -3871,12 +3884,12 @@ const charLevelCost = (rank, level) => CHAR_LEVEL_COST[rank][level - 1];
 const CHAR_RANKS = {
   normal: {
     label: 'ノーマル',
-    color: '#94A3B8',
+    color: '#64748B',
     short: 'N'
   },
   rare: {
     label: 'レア',
-    color: '#38BDF8',
+    color: '#0284C7',
     short: 'R'
   },
   epic: {
@@ -4154,6 +4167,7 @@ const GACHA_TIERS = [{
   key: 'normal',
   name: 'ノーマルガチャ',
   price: 100000,
+  boxImg: 'GachaBox_Normal.png',
   odds: {
     normal: 0.73,
     rare: 0.25,
@@ -4170,6 +4184,7 @@ const GACHA_TIERS = [{
   key: 'rare',
   name: 'レアガチャ',
   price: 500000,
+  boxImg: 'GachaBox_Rare.png',
   odds: {
     normal: 0.27,
     rare: 0.60,
@@ -4186,6 +4201,7 @@ const GACHA_TIERS = [{
   key: 'super',
   name: 'スーパーガチャ',
   price: 1000000,
+  boxImg: 'GachaBox_Super.png',
   odds: {
     rare: 0.30,
     epic: 0.50,
@@ -4197,6 +4213,11 @@ const GACHA_TIERS = [{
     legend: [15, 25]
   }
 }];
+const GACHA_BOX_EMOJI = {
+  normal: '📦',
+  rare: '🎁',
+  super: '🔮'
+};
 const rollGacha = tier => {
   const keys = Object.keys(tier.odds);
   const r = Math.random();
@@ -4226,6 +4247,60 @@ const pickCharForPieces = (stage, ownedPieces) => {
   const cand = notDone.length ? notDone : pool;
   return cand[Math.floor(Math.random() * cand.length)];
 };
+
+// ---- 招福（合体役 goldrule）：三つの黄金箱を onCombo 時に決定的に確定する（render内でRNGしない） ----
+// k=成立面数（4 or 5）。stage/ownedPiecesはその時点のスナップショットでOK（結果は箱を開けるまで表示されるだけ）。
+function buildShofuku(k, stage, ownedPieces) {
+  const candidates = CHARACTERS.filter(c => c.unlockStage <= stage).map(c => c.id);
+  const boxes = SHOFUKU_BOXES.map(def => {
+    if (def.id === 'roll') return {
+      def,
+      reward: {
+        type: 'roll',
+        amount: SHOFUKU_ROLL[k]
+      }
+    };
+    if (def.id === 'piece') {
+      if (!candidates.length)
+        // エッジ: 対象キャラ0体→コイン箱へ差し替え
+        return {
+          def: {
+            ...def,
+            id: 'coin',
+            label: '招福小判',
+            emoji: '🪙'
+          },
+          reward: {
+            type: 'coin',
+            amount: coinBaseForStage(stage) * SHOFUKU_COIN_MULT[k]
+          }
+        };
+      return {
+        def,
+        reward: {
+          type: 'piece',
+          ...SHOFUKU_PIECE[k],
+          candidates
+        }
+      };
+    }
+    const r = SHOFUKU_RAID[k],
+      cards = [];
+    for (let i = 0; i < r.cards; i++) cards.push(dropRandomCard(r.goldGuarantee && i === 0 ? 1 : r.gold)); // k5は1枚GOLD確定
+    return {
+      def,
+      reward: {
+        type: 'raid',
+        tickets: r.tickets,
+        cards
+      }
+    };
+  });
+  return {
+    k,
+    boxes
+  }; // 表示順固定（roll/piece/raid）
+}
 // スティールの宝箱1つ分の中身：カード「または」仲間のかけら（同時には出ない）。
 const rollStealBoxReward = (stage, goldChance = 0.25, pieceBonus = 0, ownedPieces = {}) => {
   const wantChar = Math.random() < 0.5;
@@ -4295,7 +4370,7 @@ const KOBAN_SHOP = [{
   id: 'roll80',
   label: 'ロール +240',
   sub: '🎲',
-  subImg: 'ui/Icon_Dice.png',
+  subImg: 'ui/Icon_DicePile.png',
   coins: 150000,
   rolls: 240
 }, {
@@ -4390,7 +4465,8 @@ function CollectionScreen({
       key: set.id,
       className: "card-set",
       style: {
-        borderColor: set.color
+        borderColor: set.color,
+        '--rk': set.color
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "cs-head"
@@ -4478,7 +4554,8 @@ function CharactersScreen({
       key: rk,
       className: "char-rank-sec",
       style: {
-        borderColor: meta.color
+        borderColor: meta.color,
+        '--rk': meta.color
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "cs-head"
@@ -5074,7 +5151,8 @@ function RaidPartyScreen({
       key: rk,
       className: "char-rank-sec",
       style: {
-        borderColor: meta.color
+        borderColor: meta.color,
+        '--rk': meta.color
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "cs-head"
@@ -5533,28 +5611,36 @@ const SHOP_PACKS = [{
   price: '¥120',
   coins: 100000,
   rolls: 60,
-  tag: ''
+  tag: '',
+  heroImg: 'CoinPack_S.png',
+  heroEmoji: '🪙'
 }, {
   id: 'm',
   title: '忍者パック',
   price: '¥610',
   coins: 600000,
   rolls: 360,
-  tag: '人気'
+  tag: '人気',
+  heroImg: 'CoinPack_M.png',
+  heroEmoji: '💰'
 }, {
   id: 'l',
   title: '大名パック',
   price: '¥3,060',
   coins: 3500000,
   rolls: 2100,
-  tag: 'お得'
+  tag: 'お得',
+  heroImg: 'CoinPack_L.png',
+  heroEmoji: '🏯'
 }, {
   id: 'vip',
   title: 'VIP（月額）',
   price: '¥980',
   coins: 0,
   rolls: 0,
-  tag: '広告除去+日替ボーナス'
+  tag: '広告除去+日替ボーナス',
+  heroImg: 'Icon_Crown.png',
+  heroEmoji: '👑'
 }];
 function ShopScreen({
   onBack,
@@ -5570,7 +5656,7 @@ function ShopScreen({
   onBuyGacha
 }) {
   return /*#__PURE__*/React.createElement("div", {
-    className: "screen sheet-screen"
+    className: "screen sheet-screen shop-screen"
   }, /*#__PURE__*/React.createElement("div", {
     className: "mini-bar"
   }, /*#__PURE__*/React.createElement("button", {
@@ -5609,7 +5695,13 @@ function ShopScreen({
     return /*#__PURE__*/React.createElement("div", {
       key: tier.key,
       className: "shop-pack gacha-card gacha-" + tier.key
-    }, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/' + tier.boxImg,
+      className: "gacha-hero",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        className: "gacha-hero-emoji"
+      }, GACHA_BOX_EMOJI[tier.key])
+    }), /*#__PURE__*/React.createElement("div", {
       className: "gacha-card-title"
     }, tier.name), /*#__PURE__*/React.createElement("button", {
       className: "po-buy gacha-buy " + (poor ? 'poor' : 'buy'),
@@ -5702,13 +5794,15 @@ function ShopScreen({
     return /*#__PURE__*/React.createElement("div", {
       key: it.id,
       className: "koban-item " + (bought ? 'bought' : '')
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "ki-label"
     }, /*#__PURE__*/React.createElement(Img, {
       src: IMG + it.subImg,
-      className: "gl-ico",
-      fallback: /*#__PURE__*/React.createElement("span", null, it.sub)
-    }), it.label), /*#__PURE__*/React.createElement("button", {
+      className: "ki-hero",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        className: "ki-hero-emoji"
+      }, it.sub)
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "ki-label"
+    }, it.label), /*#__PURE__*/React.createElement("button", {
       className: "po-buy " + (bought ? 'disabled' : poor ? 'poor' : 'buy'),
       disabled: bought,
       onClick: () => onBuyKoban(it)
@@ -5730,7 +5824,13 @@ function ShopScreen({
     className: "shop-pack"
   }, p.tag && /*#__PURE__*/React.createElement("span", {
     className: "pack-tag"
-  }, p.tag), /*#__PURE__*/React.createElement("div", {
+  }, p.tag), /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/' + p.heroImg,
+    className: "pack-hero",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "pack-hero-emoji"
+    }, p.heroEmoji)
+  }), /*#__PURE__*/React.createElement("div", {
     className: "pack-title"
   }, p.title), /*#__PURE__*/React.createElement("div", {
     className: "pack-contents"
@@ -5747,7 +5847,7 @@ function ShopScreen({
     className: "gl-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "👑")
   }), "特典")), /*#__PURE__*/React.createElement("button", {
-    className: "big-btn small gold-btn",
+    className: "big-btn small green-btn",
     onClick: () => onBuyPack(p)
   }, p.price)))))));
 }
@@ -5876,13 +5976,10 @@ function JackpotTile({
 }
 function MultiplierOverlay({
   base,
-  coinAdd = 0,
   result,
   summon = null,
   boxReward = null,
   pool,
-  comboK = 1,
-  combo = false,
   kMult = 1,
   cap = Infinity,
   k = null,
@@ -5890,15 +5987,12 @@ function MultiplierOverlay({
 }) {
   // ジャックポットは6種の報酬から抽選。当選(result)は確定済み。
   // どの報酬が並ぶか見えるよう「縦スロットリール」で高速回転→減速→当選タイルを中央の当たりラインに停止。
-  // 黄金律（コイン×ジャックポットの合体）の場合、抽選前に coinAdd（小判ぞろ目相当の上乗せ）が乗り、
-  // さらに合体ボーナス comboK（既定1.15）が全体に掛かる。
   const items = pool && pool.length ? pool : [result];
   const TILE = 88;
   const SPINS = 6;
   const landIdx = Math.max(0, items.indexOf(result));
   const mult = result.coinMultiplier;
-  // Math.round：Math.floorだと合体倍率(comboK=1.15)適用時に浮動小数の丸め誤差で1コイン目減りすることがある
-  const raw = Math.round(((base + coinAdd) * mult + (result.treasure ? 50000 : 0)) * comboK * kMult);
+  const raw = Math.round((base * mult + (result.treasure ? 50000 : 0)) * kMult);
   const total = Math.min(raw, cap);
 
   // リールの牌列：0..winIdx が回転区間、末尾に上下ぶんを足す。3枚窓の中央(上から2枚目)に当選を置く。
@@ -5978,13 +6072,9 @@ function MultiplierOverlay({
     src: IMG + 'ui/Koban_Small.png',
     className: "mb-ico",
     fallback: /*#__PURE__*/React.createElement("span", null, "🪙")
-  }), " ", fmt(base)), combo && /*#__PURE__*/React.createElement("div", {
-    className: "mult-coinadd"
-  }, "🪙 小判上乗せ +", fmt(coinAdd)), /*#__PURE__*/React.createElement("div", {
+  }), " ", fmt(base)), /*#__PURE__*/React.createElement("div", {
     className: "mult-x"
-  }, "× ", mult, result.treasure ? ' ＋🎁' : ''), combo && /*#__PURE__*/React.createElement("div", {
-    className: "mult-combo-badge"
-  }, "合体 ×", COMBO_K), kMult > 1 && /*#__PURE__*/React.createElement("div", {
+  }, "× ", mult, result.treasure ? ' ＋🎁' : ''), kMult > 1 && /*#__PURE__*/React.createElement("div", {
     className: "mult-combo-badge"
   }, "× ", kMult, k ? `（成立${k}面）` : ''), /*#__PURE__*/React.createElement("div", {
     className: "mult-total gold-text"
@@ -6136,11 +6226,11 @@ function GachaOverlay({
     className: "gacha-overlay",
     onClick: revealed ? onDone : skip
   }, phase === 'shake' && /*#__PURE__*/React.createElement(Img, {
-    src: IMG + 'ui/TreasureBox_Closed.png',
+    src: IMG + 'ui/' + tier.boxImg,
     className: "gacha-box-shake",
     fallback: /*#__PURE__*/React.createElement("span", {
       className: "gacha-emoji gacha-box-shake"
-    }, "🎁")
+    }, GACHA_BOX_EMOJI[tier.key])
   }), (phase === 'flash' || phase === 'flash2') && /*#__PURE__*/React.createElement("div", {
     className: "gacha-flash" + (phase === 'flash2' ? ' gacha-flash2' : ''),
     style: {
@@ -6176,6 +6266,316 @@ function GachaOverlay({
   }), "かけら +", amount), /*#__PURE__*/React.createElement("div", {
     className: "gacha-tap-hint"
   }, "タップして閉じる")));
+}
+
+/* ============================================================
+   SHOFUKU OVERLAY — 招福（合体役 goldrule）：三つの玉手箱シャッフルから1つ選ぶ非コイン報酬
+   intro（約1s・報酬プールのプレビューが玉手箱に吸い込まれる）
+   → shuffle（約1.5s・3つの閉じた玉手箱がCSSで位置をシャッフル。タップで即スキップ）
+   → select（ラベルなしの箱を1タップ。非選択2箱は0.4sでフェード）
+   → pickchar（かけら箱のみ：候補キャラをタップで指定）
+   → open（開封リビール→約1.2秒で自動 onReceive、タップで即スキップ）
+   箱↔報酬の対応（permutation）はマウント時に一度だけ乱数生成し、以後固定（render中に引かない・タップ時の再抽選なし）。
+   オート中も「タップ待ちで停止」（App側の paused ゲート）。自動選択・無操作自動確定は実装しない。
+   ============================================================ */
+function shofukuPreviewText(box, k) {
+  const r = box.reward;
+  if (r.type === 'roll') return `🎲 福ロール +${r.amount}`;
+  if (r.type === 'coin') return `🪙 招福小判 +${fmt(r.amount)}`;
+  if (r.type === 'piece') return `🧩 かけら +${r.normal}（レジェンド+${r.legend}）`;
+  if (r.type === 'raid') {
+    const cfg = SHOFUKU_RAID[k] || SHOFUKU_RAID[4];
+    const goldTxt = cfg.goldGuarantee ? 'GOLD1枚確定' : `GOLD${Math.round(cfg.gold * 100)}%`;
+    return `🎟️+${r.tickets}・カード×${r.cards.length} ${goldTxt}`;
+  }
+  return '';
+}
+// 表示スロット(0..2) → boxes[] index への対応をシャッフルする（Fisher-Yates）。
+const shuffle3 = () => {
+  const a = [0, 1, 2];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+function ShofukuOverlay({
+  shofuku,
+  pieceBonus = 0,
+  onReceive
+}) {
+  const {
+    k,
+    boxes
+  } = shofuku;
+  const [phase, setPhase] = useState('intro'); // intro → shuffle → select → pickchar → open
+  // 表示スロット→boxesのindexの対応。マウント時に一度だけ確定（render中にRNGを引かない）。
+  const [permutation] = useState(shuffle3);
+  const [chosenSlot, setChosenSlot] = useState(null); // 選ばれたスロット(0..2)
+  const [charId, setCharId] = useState(null); // かけら箱でタップされたキャラ
+  const [revealed, setRevealed] = useState(false); // open演出完了→「受け取る！」ボタン表示
+  const doneRef = useRef(false);
+  const timersRef = useRef([]);
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
+  const chosenBox = chosenSlot != null ? boxes[permutation[chosenSlot]] : null;
+
+  // intro → shuffle（自動）
+  useEffect(() => {
+    if (phase !== 'intro') return;
+    const t = setTimeout(() => setPhase('shuffle'), SHOFUKU_INTRO_MS);
+    timersRef.current.push(t);
+    return () => clearTimeout(t);
+  }, [phase]);
+  // shuffle → select（自動）
+  useEffect(() => {
+    if (phase !== 'shuffle') return;
+    const t = setTimeout(() => setPhase('select'), SHOFUKU_SHUFFLE_MS);
+    timersRef.current.push(t);
+    return () => clearTimeout(t);
+  }, [phase]);
+  // intro/shuffle中のタップ：スキップして即selectフェーズへ
+  const skipToSelect = () => {
+    if (phase === 'intro' || phase === 'shuffle') {
+      SFX.tap();
+      setPhase('select');
+    }
+  };
+  const pickBox = i => {
+    if (chosenSlot != null) return; // 二重タップ防止
+    SFX.tap();
+    setChosenSlot(i);
+    const box = boxes[permutation[i]];
+    timersRef.current.push(setTimeout(() => {
+      setPhase(box.reward.type === 'piece' ? 'pickchar' : 'open');
+    }, 420)); // 非選択2箱のフェード(0.4s)を見せてから次フェーズへ
+  };
+  const pickChar = cid => {
+    SFX.tap();
+    setCharId(cid);
+    setPhase('open');
+  };
+
+  // 確定報酬（かけら箱はキャラ指定後にのみ確定）
+  const resolved = useMemo(() => {
+    if (!chosenBox) return null;
+    const r = chosenBox.reward;
+    if (r.type === 'roll') return {
+      type: 'roll',
+      amount: r.amount
+    };
+    if (r.type === 'coin') return {
+      type: 'coin',
+      amount: r.amount
+    };
+    if (r.type === 'raid') return {
+      type: 'raid',
+      tickets: r.tickets,
+      cards: r.cards
+    };
+    if (r.type === 'piece') {
+      if (!charId) return null;
+      const c = CHAR_BY_ID[charId];
+      const base = c.rank === 'legend' ? r.legend : r.normal;
+      return {
+        type: 'piece',
+        charId,
+        amount: Math.round(base * (1 + pieceBonus))
+      };
+    }
+    return null;
+  }, [chosenBox, charId, pieceBonus]);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onReceive(resolved);
+  };
+  // open演出中（リビール完了前）のタップ：演出をスキップして即ボタン表示まで進める（受取自体はボタン押下のみ）
+  const skipOpenReveal = () => {
+    if (!revealed) {
+      SFX.tap();
+      setRevealed(true);
+    }
+  };
+  useEffect(() => {
+    if (phase !== 'open' || !resolved) return;
+    doneRef.current = false;
+    setRevealed(false);
+    if (resolved.type === 'roll') SFX.stage();else if (resolved.type === 'raid') SFX.jackpot();else SFX.coin(); // piece / coin
+    const t = setTimeout(() => setRevealed(true), 1200); // 演出を見せてから「受け取る！」ボタンを出す
+    timersRef.current.push(t);
+    return () => clearTimeout(t);
+  }, [phase, resolved]);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "shofuku-overlay",
+    style: {
+      backgroundImage: `url("${IMG}bg/BG_Shofuku.png")`
+    }
+  }, phase === 'intro' && /*#__PURE__*/React.createElement("div", {
+    className: "sb-intro",
+    onClick: skipToSelect
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "招福！！",
+    sub: "三つの宝が玉手箱に吸い込まれる…",
+    className: "sb-title"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "sb-intro-row"
+  }, boxes.map((box, i) => /*#__PURE__*/React.createElement("div", {
+    key: box.def.id,
+    className: "sb-intro-slot"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sb-preview-pill sb-intro-pill",
+    style: {
+      animationDelay: `${i * 0.05}s`
+    }
+  }, shofukuPreviewText(box, k)), /*#__PURE__*/React.createElement(Img, {
+    src: IMG + box.def.closed,
+    className: "sb-box-img sb-intro-box",
+    style: {
+      animationDelay: `${i * 0.05 + 0.5}s`
+    },
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "sb-box-emoji"
+    }, box.def.emoji)
+  }))))), phase === 'shuffle' && /*#__PURE__*/React.createElement("div", {
+    className: "sb-shuffle",
+    onClick: skipToSelect
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "招福！！",
+    sub: "玉手箱をよくシャッフル中…",
+    className: "sb-title"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "sb-box-row sb-shuffle-row"
+  }, [0, 1, 2].map(i => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "sb-box sb-shuffle-box sb-shuffle-box-" + i
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'ui/Tamatebako_Closed.png',
+    className: "sb-box-img",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "sb-box-emoji"
+    }, "🎁")
+  }))))), phase === 'select' && /*#__PURE__*/React.createElement("div", {
+    className: "sb-present"
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "招福！！",
+    sub: "どの玉手箱を選ぶ？",
+    className: "sb-title"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "sb-box-row"
+  }, [0, 1, 2].map(i => {
+    const state = chosenSlot == null ? 'idle' : chosenSlot === i ? 'chosen' : 'faded';
+    return /*#__PURE__*/React.createElement("button", {
+      key: i,
+      className: "sb-box " + state,
+      disabled: chosenSlot != null,
+      onClick: () => pickBox(i)
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: IMG + 'ui/Tamatebako_Closed.png',
+      className: "sb-box-img",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        className: "sb-box-emoji"
+      }, "🎁")
+    }));
+  }))), phase === 'pickchar' && chosenBox && /*#__PURE__*/React.createElement("div", {
+    className: "sb-pickchar"
+  }, /*#__PURE__*/React.createElement(ScrollBanner, {
+    title: "どの仲間にかけらを？",
+    className: "sb-title"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "char-grid sb-char-grid"
+  }, chosenBox.reward.candidates.map(cid => {
+    const c = CHAR_BY_ID[cid];
+    const meta = CHAR_RANKS[c.rank];
+    const amt = Math.round((c.rank === 'legend' ? chosenBox.reward.legend : chosenBox.reward.normal) * (1 + pieceBonus));
+    return /*#__PURE__*/React.createElement("div", {
+      key: cid,
+      className: "char-card sb-char-pick",
+      style: {
+        '--rk': meta.color
+      },
+      onClick: () => pickChar(cid)
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "char-card-face"
+    }, /*#__PURE__*/React.createElement(Img, {
+      src: charThumb(cid),
+      className: "char-card-img",
+      fallback: /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 38
+        }
+      }, "🧙")
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "char-rank-tag",
+      style: {
+        background: meta.color
+      }
+    }, meta.short)), /*#__PURE__*/React.createElement("div", {
+      className: "char-card-name"
+    }, c.name), /*#__PURE__*/React.createElement("div", {
+      className: "char-card-desc"
+    }, "かけら +", amt, c.rank === 'legend' ? '（付与控えめ）' : ''));
+  }))), phase === 'open' && chosenBox && resolved && /*#__PURE__*/React.createElement("div", {
+    className: "sb-open",
+    onClick: skipOpenReveal
+  }, /*#__PURE__*/React.createElement(Img, {
+    src: IMG + chosenBox.def.open,
+    className: "sb-open-box",
+    fallback: /*#__PURE__*/React.createElement("span", {
+      className: "sb-open-emoji"
+    }, chosenBox.def.emoji)
+  }), /*#__PURE__*/React.createElement(Img, {
+    src: IMG + 'effect/Effect_Shofuku.png',
+    className: "sb-open-effect",
+    fallback: /*#__PURE__*/React.createElement("div", {
+      className: "sb-open-effect-fallback"
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "sb-open-result"
+  }, resolved.type === 'roll' && /*#__PURE__*/React.createElement(React.Fragment, null, "🎲 福ロール +", resolved.amount), resolved.type === 'coin' && /*#__PURE__*/React.createElement(React.Fragment, null, "🪙 招福小判 +", fmt(resolved.amount)), resolved.type === 'piece' && /*#__PURE__*/React.createElement(React.Fragment, null, "🧩 ", CHAR_BY_ID[resolved.charId].name, "のかけら +", resolved.amount), resolved.type === 'raid' && /*#__PURE__*/React.createElement(React.Fragment, null, "🎟️+", resolved.tickets, "・カード×", resolved.cards.length, resolved.cards.some(c => c.gold) ? ' ★GOLD!' : '')), revealed ? /*#__PURE__*/React.createElement("button", {
+    className: "big-btn gold-btn sb-open-receive",
+    onClick: e => {
+      e.stopPropagation();
+      finish();
+    }
+  }, "受け取る！") : /*#__PURE__*/React.createElement("div", {
+    className: "sb-open-tap"
+  }, "タップで演出をスキップ")));
+}
+
+/* ============================================================
+   DEBUG PANEL — App直下・画面（screen）ごとにセクションが切り替わるデータ駆動パネル。
+   sections: [{ title, items:[{ key, label, onClick } | { key, label, chips:[{label,onClick}] }] }]
+   ============================================================ */
+function DebugPanel({
+  sections,
+  onClose
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "debug-panel"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "debug-head"
+  }, "🐞 デバッグ"), sections.map(sec => /*#__PURE__*/React.createElement("div", {
+    key: sec.title,
+    className: "debug-sec"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "debug-sec-title"
+  }, sec.title), sec.items.map(it => it.chips ? /*#__PURE__*/React.createElement("div", {
+    key: it.key,
+    className: "debug-chips"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "dc-label"
+  }, it.label), it.chips.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.label,
+    className: "debug-chip",
+    onClick: c.onClick
+  }, c.label))) : /*#__PURE__*/React.createElement("button", {
+    key: it.key,
+    className: "debug-item",
+    onClick: it.onClick
+  }, it.label)))), /*#__PURE__*/React.createElement("button", {
+    className: "debug-close",
+    onClick: onClose
+  }, "閉じる"));
 }
 
 /* ============================================================
@@ -6259,9 +6659,17 @@ function App() {
   }[initScreen] || {};
   const [screen, setScreen] = useState(initScreen);
   const [flow, setFlow] = useState(initFlow);
+  // 画面別デバッグパネル（🐞）：debugOpenはApp側で保持（画面遷移でも維持）。noPodiumはMainRollローカルからApp移動。
+  const [debugOpen, setDebugOpen] = useState(() => qp.has('debugopen'));
+  const [noPodium, setNoPodium] = useState(false); // デバッグ：台座（お盆）ON/OFF。永続化不要（セッション内のみ）
+  const mainDebugRef = useRef(null); // MainRollが forceHand を登録する橋渡し（役強制はmain画面専用）
+  const registerMainDebug = useCallback(api => {
+    mainDebugRef.current = api;
+  }, []);
   const [zorumeFace, setZorumeFace] = useState(null);
   const [multFx, setMultFx] = useState(null); // {base, mult} ジャックポット等の倍率演出
   const [shieldFx, setShieldFx] = useState(false); // シールドぞろ目の獲得演出
+  const [shofukuFx, setShofukuFx] = useState(null); // {k, boxes} 招福（合体役goldrule）：千両箱オーバーレイ
   const [gachaFx, setGachaFx] = useState(null); // {tier, char, amount, rank} 仲間ガチャ演出中
   const [toast, setToast] = useState('');
   const [night, setNight] = useState(() => lsGet('ndm_night', qp.has('night')));
@@ -6286,6 +6694,11 @@ function App() {
     ownedPiecesRef.current = ownedCharPieces;
     lsSet('ndm_char_pieces', ownedCharPieces);
   }, [ownedCharPieces]);
+  // ?shofuku=4|5 — 招福（合体役goldrule）オーバーレイをマウント時に直接プレビュー（dev/preview）
+  useEffect(() => {
+    const sk = parseInt(qp.get('shofuku'), 10);
+    if (sk === 4 || sk === 5) setShofukuFx(buildShofuku(sk, stage, ownedPiecesRef.current));
+  }, []); // eslint-disable-line
   const [equippedChar, setEquippedChar] = useState(() => lsGet('ndm_char_equipped', null));
   useEffect(() => {
     lsSet('ndm_char_equipped', equippedChar);
@@ -6447,6 +6860,14 @@ function App() {
     const sh = effRef.current.startShields || 0; // 石亀など：ステージ開始時シールド+
     if (sh) grantShields(sh);
   }, [grantShields]);
+  // DEBUG — castle画面から任意のステージへ即ジャンプ（村も新ステージのテーマ・Lv0で再生成）。
+  // stage/village の永続化は既存useEffect（[stage]・[castleVillage,stage]）が自動で処理する。
+  const jumpToStage = useCallback(n => {
+    const s = Math.min(MAX_STAGE, Math.max(1, n | 0));
+    setStage(s);
+    setCastleVillage(themedVillage(s, {}));
+    showToast(`🏯 ステージ${s}へ移動`);
+  }, [showToast]);
 
   // ---- collection / season / shop handlers ----
   // カード獲得はキュー方式：複数枚（例：スティール宝箱×N）を順番にポップアップ表示する
@@ -6912,28 +7333,279 @@ function App() {
     go('main');
   }, [addCoins, showToast, rotateOpponent, go]);
 
-  // 黄金律：ジャックポット報酬スロット（MultiplierOverlay）に合流。coinBaseForStageの小判上乗せ＋合体×1.15を追加。
-  const onCombo = useCallback(comboId => {
+  // 合体役の成立後処理：強襲(assault)はミニゲームへ画面遷移、招福(goldrule)はShofukuOverlay（千両箱）へ合流。
+  const onCombo = useCallback((comboId, k = DICE_MIN) => {
     if (comboId === 'assault') {
       onAssault();
       return;
     }
     if (comboId === 'goldrule') {
-      const res = rollBonusDice('jackpot');
-      const summon = res.companion ? rollCompanionSummon() : null;
-      const boxReward = res.treasure && !res.companion ? rollStealBoxReward(stage, res.rare ? 0.9 : 0.45, effRef.current.pieceBonus, ownedCharPieces) : null;
-      const coinAdd = Math.round(coinBaseForStage(stage) * GOLDRULE_COIN_ADD);
-      setMultFx({
-        base: coinBaseForStage(stage),
-        coinAdd,
-        comboK: COMBO_K,
-        combo: true,
-        result: res,
-        summon,
-        boxReward
+      // 招福：三つの黄金箱（千両箱）から1つ選ぶ非コイン報酬。onCombo時に決定的に確定（render内でRNGしない）。
+      setShofukuFx(buildShofuku(k, stageRef.current, ownedPiecesRef.current));
+    }
+  }, [onAssault]);
+
+  // 招福：受取確定（ShofukuOverlayの開封リビュー完了時）。相手ローテーションなし。
+  const onShofukuDone = useCallback(resolved => {
+    switch (resolved.type) {
+      case 'roll':
+        grantRolls(resolved.amount);
+        showToast(`招福・福ロール +${resolved.amount} 🎲`);
+        break;
+      case 'coin':
+        addCoins(resolved.amount);
+        showToast(`招福・小判 +${fmt(resolved.amount)} 🪙`);
+        break;
+      case 'piece':
+        {
+          const c = CHAR_BY_ID[resolved.charId];
+          addPiecesTo(resolved.charId, resolved.amount);
+          showToast(`🧩 ${c.name}のかけら +${resolved.amount}`);
+          break;
+        }
+      case 'raid':
+        grantTickets(resolved.tickets);
+        grantStealRewards(resolved.cards.map(card => ({
+          type: 'card',
+          card
+        })));
+        showToast(`招福・討伐と絵札 🎟+${resolved.tickets}・カード×${resolved.cards.length}`);
+        break;
+      default:
+        break;
+    }
+    setShofukuFx(null);
+  }, [grantRolls, addCoins, addPiecesTo, grantTickets, grantStealRewards, showToast]);
+
+  // ---- DEBUG — 画面（screen）ごとのセクション定義。共通セクション（コイン/ロール/シールド/チケット）を先頭に、
+  // 画面別セクションを続ける。役強制（main専用）だけは mainDebugRef 経由でMainRollのforceHandを呼ぶ。
+  const buildDebugSections = scr => {
+    const sections = [{
+      title: '共通',
+      items: [{
+        key: 'coin100w',
+        label: '💰 コイン +100万',
+        onClick: () => addCoins(1000000)
+      }, {
+        key: 'roll50',
+        label: '🎲 ロール +50',
+        onClick: () => grantRolls(50)
+      }, {
+        key: 'shieldfull',
+        label: '🛡️ シールド満タン',
+        onClick: () => setShields(3)
+      }, {
+        key: 'ticket5',
+        label: '🎟️ チケット +5',
+        onClick: () => grantTickets(5)
+      }]
+    }];
+    if (scr === 'main') {
+      sections.push({
+        title: '役を指定',
+        items: DEBUG_HANDS.map(h => ({
+          key: h.key,
+          label: h.label,
+          onClick: () => {
+            setDebugOpen(false);
+            mainDebugRef.current && mainDebugRef.current.forceHand(h);
+          }
+        }))
+      });
+      sections.push({
+        title: '演出・台座',
+        items: [{
+          key: 'anim',
+          label: `🎬 演出: ${rollAnim === '3d' ? '3D立体' : rollAnim === 'toss' ? '飛ばし（下から）' : '回転（従来）'}`,
+          onClick: toggleRollAnim
+        }, {
+          key: 'podium',
+          label: `🍽️ 台座: ${noPodium ? 'OFF' : 'ON'}`,
+          onClick: () => setNoPodium(v => !v)
+        }]
+      });
+      sections.push({
+        title: 'シールド・相手',
+        items: [{
+          key: 'myshield',
+          label: '🛡️ 自分シールド',
+          chips: [0, 1, 2, 3].map(n => ({
+            label: String(n),
+            onClick: () => setShields(n)
+          }))
+        }, {
+          key: 'opprotate',
+          label: '👺 相手ローテーション',
+          onClick: rotateOpponent
+        }, {
+          key: 'oppshield',
+          label: '🛡️ 相手シールド +1',
+          onClick: () => setOpponent(o => ({
+            ...o,
+            shields: Math.min(2, o.shields + 1)
+          }))
+        }]
+      });
+    } else if (scr === 'castle') {
+      sections.push({
+        title: 'ステージ',
+        items: [{
+          key: 'stagejump',
+          label: '★ステージ',
+          chips: Array.from({
+            length: MAX_STAGE
+          }, (_, i) => i + 1).map(n => ({
+            label: 'S' + n,
+            onClick: () => jumpToStage(n)
+          }))
+        }]
+      });
+      sections.push({
+        title: '建設',
+        items: [{
+          key: 'alllvup',
+          label: '🏗️ 全建物 +1Lv',
+          onClick: () => setCastleVillage(v => v.map(it => ({
+            ...it,
+            level: Math.min(it.level + 1, it.stages.length - 1)
+          })))
+        }, {
+          key: 'clearstage',
+          label: '🎉 ステージ即クリア(全Max)',
+          onClick: () => setCastleVillage(themedVillage(stage, {
+            max: true
+          }))
+        }, {
+          key: 'resetvillage',
+          label: '🧹 村リセット(全Lv0)',
+          onClick: () => setCastleVillage(themedVillage(stage, {}))
+        }]
+      });
+    } else if (scr === 'clan') {
+      sections.push({
+        title: 'ボス・HP',
+        items: [{
+          key: 'bosspick',
+          label: '👹 ボス',
+          chips: Array.from({
+            length: RAID_MAX_BOSS
+          }, (_, i) => i + 1).map(n => ({
+            label: String(n),
+            onClick: () => setRaid(r => ({
+              ...r,
+              boss: n,
+              hp: 100,
+              milestonesHit: [],
+              awaitingUnlock: false,
+              allDone: false
+            }))
+          }))
+        }, {
+          key: 'hppick',
+          label: '❤️ HP',
+          chips: [100, 75, 50, 25, 1].map(n => ({
+            label: String(n),
+            onClick: () => setRaid(r => ({
+              ...r,
+              hp: n
+            }))
+          }))
+        }]
+      });
+      sections.push({
+        title: '進行',
+        items: [{
+          key: 'msreset',
+          label: '🏁 マイルストーンReset',
+          onClick: () => setRaid(r => ({
+            ...r,
+            milestonesHit: []
+          }))
+        }, {
+          key: 'kill',
+          label: '💀 撃破(HP0)',
+          onClick: () => setRaid(r => ({
+            ...r,
+            hp: 0
+          }))
+        }, {
+          key: 'ticket5',
+          label: '🎟️ チケット +5',
+          onClick: () => grantTickets(5)
+        }]
+      });
+    } else if (scr === 'characters') {
+      sections.push({
+        title: 'キャラ',
+        items: [{
+          key: 'allpieces',
+          label: '🧩 全キャラ かけら+100',
+          onClick: () => setOwnedCharPieces(prev => {
+            const nx = {
+              ...prev
+            };
+            CHARACTERS.forEach(c => {
+              nx[c.id] = (nx[c.id] || 0) + CHAR_PIECE_GOAL;
+            });
+            return nx;
+          })
+        }, {
+          key: 'equippieces',
+          label: '🧩 装備中 かけら+100',
+          onClick: () => {
+            if (equippedChar) addPiecesTo(equippedChar, CHAR_PIECE_GOAL);
+          }
+        }, {
+          key: 'alllvmax',
+          label: '⬆️ 全キャラ Lv最大',
+          onClick: () => setCharLevels(() => Object.fromEntries(CHARACTERS.map(c => [c.id, CHAR_MAX_LEVEL])))
+        }]
+      });
+    } else if (scr === 'collection') {
+      sections.push({
+        title: 'カード',
+        items: [{
+          key: 'randcards',
+          label: '🎴 ランダム +5',
+          onClick: () => enqueueCards(5, 0.25)
+        }, {
+          key: 'allcards',
+          label: '🎴 全カード 1枚ずつ',
+          onClick: () => {
+            const nx = {
+              ...ownedRef.current
+            };
+            ALL_CARDS.forEach(c => {
+              nx[c.id] = (nx[c.id] || 0) + 1;
+            });
+            ownedRef.current = nx;
+            setOwnedCards(nx);
+          }
+        }, {
+          key: 'cardreset',
+          label: '🧹 カードReset',
+          onClick: () => {
+            ownedRef.current = {};
+            setOwnedCards({});
+          }
+        }]
+      });
+    } else if (scr === 'shop') {
+      sections.push({
+        title: 'ショップ',
+        items: [{
+          key: 'shopreroll',
+          label: '🛒 再ロール（4種入替）',
+          onClick: debugRerollShop
+        }, {
+          key: 'shopreset',
+          label: '🛒 購入リセット',
+          onClick: debugResetShop
+        }]
       });
     }
-  }, [onAssault, stage, ownedCharPieces]);
+    return sections;
+  };
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
   }, screen === 'main' && /*#__PURE__*/React.createElement(MainRoll, {
@@ -6956,17 +7628,12 @@ function App() {
     auto: auto,
     setAuto: setAuto,
     rollAnim: rollAnim,
-    onToggleRollAnim: toggleRollAnim,
-    paused: !!multFx || shieldFx || !!zorumeFace,
+    paused: !!multFx || shieldFx || !!zorumeFace || !!shofukuFx,
     equipped: equippedChar,
     freeRollChance: eff.freeRollChance,
     cardDropBonus: eff.cardDropBonus,
-    onResetShop: debugResetShop,
-    onRerollShop: debugRerollShop,
-    onDebugTickets: () => {
-      grantTickets(5);
-      showToast('🎟️ チケット +5（デバッグ）');
-    }
+    registerMainDebug: registerMainDebug,
+    noPodium: noPodium
   }), screen === 'bonus' && /*#__PURE__*/React.createElement(BonusRoll, {
     trigger: flow.trigger,
     stage: stage,
@@ -7084,6 +7751,13 @@ function App() {
     onBuyKoban: buyKoban,
     charLevels: charLevels,
     onBuyGacha: buyGacha
+  }), DEBUG_FAB_SCREENS.has(screen) && /*#__PURE__*/React.createElement("button", {
+    className: "debug-fab",
+    onClick: () => setDebugOpen(v => !v),
+    title: "デバッグ"
+  }, "🐞"), debugOpen && DEBUG_FAB_SCREENS.has(screen) && /*#__PURE__*/React.createElement(DebugPanel, {
+    sections: buildDebugSections(screen),
+    onClose: () => setDebugOpen(false)
   }), cardPopup && /*#__PURE__*/React.createElement("div", {
     className: "card-popup",
     key: cardPopup.card.id + (cardPopup.isNew ? '-n' : '-d')
@@ -7128,9 +7802,6 @@ function App() {
     onComplete: onZorumeComplete
   }), multFx && /*#__PURE__*/React.createElement(MultiplierOverlay, {
     base: multFx.base,
-    coinAdd: multFx.coinAdd || 0,
-    comboK: multFx.comboK || 1,
-    combo: !!multFx.combo,
     result: multFx.result,
     summon: multFx.summon,
     boxReward: multFx.boxReward,
@@ -7141,11 +7812,10 @@ function App() {
     onDone: total => {
       const summon = multFx.summon;
       const boxReward = multFx.boxReward;
-      const combo = multFx.combo;
       setMultFx(null);
       const g = Math.round(total * eff.coinMult * (1 + eff.jackpotBonus));
       addCoins(g);
-      showToast(`${combo ? '黄金律！' : 'ジャックポット！'} +${fmt(g)} 🪙`);
+      showToast(`ジャックポット！ +${fmt(g)} 🪙`);
       if (summon) setTimeout(() => {
         addPiecesTo(summon.char.id, summon.amount);
         showToast(`🧩 仲間召喚！ ${summon.char.name}のかけら +${summon.amount}`);
@@ -7164,6 +7834,10 @@ function App() {
       grantShields(3);
       if (exc > 0) addCoins(exc);
     }
+  }), shofukuFx && /*#__PURE__*/React.createElement(ShofukuOverlay, {
+    shofuku: shofukuFx,
+    pieceBonus: eff.pieceBonus,
+    onReceive: onShofukuDone
   }), gachaFx && /*#__PURE__*/React.createElement(GachaOverlay, {
     tier: gachaFx.tier,
     char: gachaFx.char,
