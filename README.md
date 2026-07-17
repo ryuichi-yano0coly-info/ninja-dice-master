@@ -34,8 +34,9 @@ python3 -m http.server 8777
 
 ### 建築の段階画像
 各建築物はレベルごとに専用の建築途中画像を持ちます（image-genで生成、透過処理済み）。
-- 天守閣: `Castle_Build_1〜4` → `Castle_Himeji`（5段階）
-- 蔵 / 石像 / 庭園: `Build_Storehouse_1〜3` / `Build_Statue_1〜3` / `Build_Garden_1〜3`（各3段階）
+- 画像はステージテーマごとに `assets/images/building/<theme>/`（himeji/windsor/tajmahal/egypt/china/greece/aztec/russia/arabia/dragon）に格納
+- 天守閣: `Castle_1〜4` → `Castle`（姫路のみ5段階、他テーマは`Castle_1〜2`→`Castle`の3段階）
+- 蔵 / 石像 / 庭園: `Storehouse_1〜3` / `Statue_1〜3` / `Garden_1〜3`（各3段階、全テーマ共通）
 - 建設ボタンでレベル+1、コスト `500 / 1,500 / 4,500 / 13,500 …`（`buildCost`）
 - 攻撃画面は同じ建築物データ（`BUILD_ITEMS`）を流用し、相手の村の各建築物を攻撃対象にできます
 

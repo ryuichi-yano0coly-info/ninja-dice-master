@@ -107,33 +107,33 @@ const ASSAULT_SUMMARY_HOLD = 2200;       // 強襲：サマリー表示から自
    4個以上でのみ「強襲(assault)」「黄金律(goldrule)」の合体役が抽選対象に入る。 */
 const HAND_ODDS = {
   3: [
-    { id:'attack',  p:0.03 },   // アタックぞろ目  ≈3回
-    { id:'steal',   p:0.03 },   // スティールぞろ目 ≈3回
-    { id:'shield',  p:0.03 },   // シールドぞろ目  ≈3回
-    { id:'jackpot', p:0.02 },   // ジャックポットぞろ目 ≈2回
-    { id:'coin',    p:0.03 },   // コインぞろ目    ≈3回
-    { id:'combo',   p:0.03 },   // ジャックポット×2 ≈3回
-  ], // 残り ≈83% は通常役
+    { id:'attack',  p:0.03 },   // アタックぞろ目
+    { id:'steal',   p:0.03 },   // スティールぞろ目
+    { id:'shield',  p:0.03 },   // シールドぞろ目
+    { id:'jackpot', p:0.015 },  // ジャックポットぞろ目
+    { id:'coin',    p:0.03 },   // コインぞろ目
+    { id:'combo',   p:0.015 },  // ジャックポット×2
+  ], // 当たり計15% → 通常役 85%
   4: [
-    { id:'attack',  p:0.03 },
-    { id:'steal',   p:0.03 },
-    { id:'shield',  p:0.03 },
-    { id:'jackpot', p:0.02 },
-    { id:'coin',    p:0.03 },
-    { id:'combo',   p:0.02 },   // ジャックポット×2（合体枠が増えるぶん微減）
+    { id:'attack',  p:0.02 },
+    { id:'steal',   p:0.02 },
+    { id:'shield',  p:0.02 },
+    { id:'jackpot', p:0.015 },
+    { id:'coin',    p:0.02 },
+    { id:'combo',   p:0.015 },  // ジャックポット×2（合体枠が増えるぶん微減）
     { id:'assault',  p:0.02 },  // 強襲（合体）
     { id:'goldrule', p:0.02 },  // 黄金律（合体）
-  ],
+  ], // 当たり計15% → 通常役 85%
   5: [
-    { id:'attack',  p:0.03 },
-    { id:'steal',   p:0.03 },
-    { id:'shield',  p:0.03 },
-    { id:'jackpot', p:0.02 },
-    { id:'coin',    p:0.03 },
-    { id:'combo',   p:0.02 },
-    { id:'assault',  p:0.03 },  // 強襲（合体）：5個は最も出やすい
-    { id:'goldrule', p:0.03 },  // 黄金律（合体）：5個は最も出やすい
-  ],
+    { id:'attack',  p:0.015 },
+    { id:'steal',   p:0.015 },
+    { id:'shield',  p:0.015 },
+    { id:'jackpot', p:0.015 },
+    { id:'coin',    p:0.015 },
+    { id:'combo',   p:0.015 },
+    { id:'assault',  p:0.03 },  // 強襲（合体）：5個は合体が本命
+    { id:'goldrule', p:0.03 },  // 黄金律（合体）：5個は合体が本命
+  ], // 当たり計15% → 通常役 85%
 };
 const shuffleN = (a) => { const b=[...a]; for(let i=b.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
 const NON_JACKPOT = FACE_LIST.filter(f => f.id !== 'jackpot');
@@ -316,7 +316,7 @@ const makeCastleParts = () => ([
 const freshCastleParts = () => makeCastleParts().map(p => ({ ...p, level:0, state:'notStarted' }));
 
 const fmt = n => Math.round(n).toLocaleString('en-US');
-const CASTLE_IMG = { himeji: IMG+'building/Castle_Himeji.png', windsor: IMG+'building/Castle_Windsor.png', tajmahal: IMG+'building/Castle_TajMahal.png' };
+const CASTLE_IMG = { himeji: IMG+'building/himeji/Castle.png', windsor: IMG+'building/windsor/Castle.png', tajmahal: IMG+'building/tajmahal/Castle.png' };
 // 10ステージ＝10テーマ（世界の名所ツアー）。stage1から順に切り替わる。
 const STAGE_THEMES = ['himeji','windsor','tajmahal','egypt','china','greece','aztec','russia','arabia','dragon'];
 const MAX_STAGE = STAGE_THEMES.length;
@@ -328,8 +328,8 @@ const coinBaseForStage = (s) => { const n = Math.min(Math.max(1, s|0), MAX_STAGE
 
 // ---- 役スケール（成立面数 k。k=3が現行基準。合体役=assault/goldruleには適用しない） ----
 // スティールのタップ数は常に3固定（STEAL_BAND_BY_K参照）。kによる上振れは抽選レンジ側で保証する。
-const ATTACK_DESTROY_BY_K= { 3:1, 4:2, 5:3 };   // 破壊棟数 = k−2
-const ATTACK_COIN_KMULT  = { 3:1, 4:1.5, 5:2 }; // coin部分のkスケール
+// アタックのkスケールはコイン倍率一本（複数棟破壊は廃止。破壊は常にタップした1棟＝選択のゲーム性を維持）
+const ATTACK_COIN_KMULT  = { 3:1, 4:2, 5:3 };
 const ATTACK_COIN_CAP_FRAC = 0.5;               // 1回で奪える相手コイン割合の上限（50%ハードキャップ）
 const JACKPOT_KMULT      = { 3:1, 4:2, 5:3 };   // 獲得×(k−2)
 const JACKPOT_CAP_MULT   = 200;                 // コインボーナス最大×200との階層逆転を解消し、JPを頂点に維持
@@ -372,33 +372,25 @@ const pickOpponent = (currentKey) => {
 const oppShortName = (name) => (name||'').split(' ').pop();
 
 const CASTLE_NAME = { himeji:'姫路城', windsor:'ウィンザー城', tajmahal:'タージ・マハル' };
-// 城テーマごとの建築段階画像（最後が完成形）
-const CASTLE_STAGES = {
-  himeji:   [IMG+'building/Castle_Build_1.png', IMG+'building/Castle_Build_2.png', IMG+'building/Castle_Build_3.png', IMG+'building/Castle_Build_4.png', IMG+'building/Castle_Himeji.png'],
-  windsor:  [IMG+'building/Windsor_Build_1.png', IMG+'building/Windsor_Build_2.png', IMG+'building/Castle_Windsor.png'],
-  tajmahal: [IMG+'building/Taj_Build_1.png', IMG+'building/Taj_Build_2.png', IMG+'building/Castle_TajMahal.png'],
+// 城テーマごとの建設段階数（姫路のみ5段階=Castle_1〜4+完成形、他は3段階=Castle_1〜2+完成形）
+const CASTLE_BUILD_STEPS = { himeji: 4 };
+// 城の段階画像パスを生成: building/<theme>/Castle_1..N.png + 完成形 building/<theme>/Castle.png
+const castleStagesForTheme = (theme) => {
+  const steps = CASTLE_BUILD_STEPS[theme] ?? 2;
+  const stages = [];
+  for (let i = 1; i <= steps; i++) stages.push(IMG+'building/'+theme+'/Castle_'+i+'.png');
+  stages.push(IMG+'building/'+theme+'/Castle.png');
+  return stages;
 };
+// 付帯建築（蔵/石像/庭園）は全テーマ共通で3段階: building/<theme>/<Type>_1..3.png
+const buildingStagesForTheme = (theme) => ({
+  storehouse: [1,2,3].map(i => IMG+'building/'+theme+'/Storehouse_'+i+'.png'),
+  statue:     [1,2,3].map(i => IMG+'building/'+theme+'/Statue_'+i+'.png'),
+  garden:     [1,2,3].map(i => IMG+'building/'+theme+'/Garden_'+i+'.png'),
+});
 // 建設画面の背景（城テーマに合わせる）
 const CASTLE_BG = { himeji:IMG+'bg/BG_Castle.png', windsor:IMG+'bg/BG_Castle_Windsor.png', tajmahal:IMG+'bg/BG_Castle_TajMahal.png' };
-// 城テーマごとの付帯建築（蔵/石像/庭園）段階画像。城以外もテーマに一致させる。
-const BUILDING_STAGES = {
-  himeji: {
-    storehouse:[IMG+'building/Build_Storehouse_1.png', IMG+'building/Build_Storehouse_2.png', IMG+'building/Build_Storehouse_3.png'],
-    statue:    [IMG+'building/Build_Statue_1.png',     IMG+'building/Build_Statue_2.png',     IMG+'building/Build_Statue_3.png'],
-    garden:    [IMG+'building/Build_Garden_1.png',     IMG+'building/Build_Garden_2.png',     IMG+'building/Build_Garden_3.png'],
-  },
-  windsor: {
-    storehouse:[IMG+'building/Windsor_Storehouse_1.png', IMG+'building/Windsor_Storehouse_2.png', IMG+'building/Windsor_Storehouse_3.png'],
-    statue:    [IMG+'building/Windsor_Statue_1.png',     IMG+'building/Windsor_Statue_2.png',     IMG+'building/Windsor_Statue_3.png'],
-    garden:    [IMG+'building/Windsor_Garden_1.png',     IMG+'building/Windsor_Garden_2.png',     IMG+'building/Windsor_Garden_3.png'],
-  },
-  tajmahal: {
-    storehouse:[IMG+'building/Taj_Storehouse_1.png', IMG+'building/Taj_Storehouse_2.png', IMG+'building/Taj_Storehouse_3.png'],
-    statue:    [IMG+'building/Taj_Statue_1.png',     IMG+'building/Taj_Statue_2.png',     IMG+'building/Taj_Statue_3.png'],
-    garden:    [IMG+'building/Taj_Garden_1.png',     IMG+'building/Taj_Garden_2.png',     IMG+'building/Taj_Garden_3.png'],
-  },
-};
-// stage4-10 の新テーマを自動登録（画像は <Pfx>_Build_1/2 + Castle_<Pfx>、蔵/石像/庭園は <Pfx>_<Type>_1..3、背景 BG_Castle_<Pfx>）
+// stage4-10 の新テーマ名・背景を自動登録（背景は BG_Castle_<Pfx>、建物画像はテーマフォルダで統一のためpfx不要）
 const NEW_THEMES = {
   egypt:  { name:'ピラミッド',       pfx:'Egypt'  },
   china:  { name:'紫禁城',           pfx:'China'  },
@@ -409,15 +401,15 @@ const NEW_THEMES = {
   dragon: { name:'龍宮天空城',       pfx:'Dragon' },
 };
 Object.keys(NEW_THEMES).forEach(key => {
-  const p = NEW_THEMES[key].pfx;
-  CASTLE_NAME[key]   = NEW_THEMES[key].name;
-  CASTLE_STAGES[key] = [IMG+'building/'+p+'_Build_1.png', IMG+'building/'+p+'_Build_2.png', IMG+'building/Castle_'+p+'.png'];
-  CASTLE_BG[key]     = IMG+'bg/BG_Castle_'+p+'.png';
-  BUILDING_STAGES[key] = {
-    storehouse:[IMG+'building/'+p+'_Storehouse_1.png', IMG+'building/'+p+'_Storehouse_2.png', IMG+'building/'+p+'_Storehouse_3.png'],
-    statue:    [IMG+'building/'+p+'_Statue_1.png',     IMG+'building/'+p+'_Statue_2.png',     IMG+'building/'+p+'_Statue_3.png'],
-    garden:    [IMG+'building/'+p+'_Garden_1.png',     IMG+'building/'+p+'_Garden_2.png',     IMG+'building/'+p+'_Garden_3.png'],
-  };
+  CASTLE_NAME[key] = NEW_THEMES[key].name;
+  CASTLE_BG[key]   = IMG+'bg/BG_Castle_'+NEW_THEMES[key].pfx+'.png';
+});
+// 城テーマごとの建築段階画像（城・蔵/石像/庭園ともに building/<theme>/ 配下を参照。全10テーマ共通ロジックで生成）
+const CASTLE_STAGES = {};
+const BUILDING_STAGES = {};
+STAGE_THEMES.forEach(theme => {
+  CASTLE_STAGES[theme] = castleStagesForTheme(theme);
+  BUILDING_STAGES[theme] = buildingStagesForTheme(theme);
 });
 // 指定テーマでのその建物の段階配列（城はCASTLE_STAGES、蔵/石像/庭園はBUILDING_STAGES）
 const themedStagesFor = (itemId, theme) =>
@@ -426,12 +418,9 @@ const themedStagesFor = (itemId, theme) =>
 /* ---- Coin Master style build items (each levels up through visual stages) ---- */
 const BUILD_ITEMS = [
   { id:'castle',     label:'天守閣', emoji:'🏯', x:'50%', y:'40%', w:180, stages:CASTLE_STAGES.himeji },
-  { id:'storehouse', label:'蔵',     emoji:'🏬', x:'18%', y:'60%', w:112,
-    stages:[IMG+'building/Build_Storehouse_1.png', IMG+'building/Build_Storehouse_2.png', IMG+'building/Build_Storehouse_3.png'] },
-  { id:'statue',     label:'石像',   emoji:'🗿', x:'83%', y:'57%', w:92,
-    stages:[IMG+'building/Build_Statue_1.png', IMG+'building/Build_Statue_2.png', IMG+'building/Build_Statue_3.png'] },
-  { id:'garden',     label:'庭園',   emoji:'🌸', x:'50%', y:'82%', w:150,
-    stages:[IMG+'building/Build_Garden_1.png', IMG+'building/Build_Garden_2.png', IMG+'building/Build_Garden_3.png'] },
+  { id:'storehouse', label:'蔵',     emoji:'🏬', x:'18%', y:'60%', w:112, stages:BUILDING_STAGES.himeji.storehouse },
+  { id:'statue',     label:'石像',   emoji:'🗿', x:'83%', y:'57%', w:92,  stages:BUILDING_STAGES.himeji.statue },
+  { id:'garden',     label:'庭園',   emoji:'🌸', x:'50%', y:'82%', w:150, stages:BUILDING_STAGES.himeji.garden },
 ];
 const itemMax = (it) => it.stages.length - 1;                 // top level index (= complete)
 // Coin Master 風の値段感：6桁が当たり前（標準stage3のLv0で約10万コイン）。ステージ・レベルで増加。
@@ -1345,17 +1334,17 @@ function AttackSelect({ opponent, bonusResult, stage=3, k=3, ignoreShield=false,
   const [hitGroup, setHitGroup] = useState([]); // 起点タップ＋自動巻き込み分（k連動、破壊はまとめて1タップ）
   const [phase, setPhase] = useState(null);  // 'coin' | 'shield' | 'broken'
   const [broken, setBroken] = useState([]);  // 破壊済みの建物id
-  const rate = Math.round((bonusResult?.coinRate ?? 0.25) * 100) || 25;
-  const destroyCount = ATTACK_DESTROY_BY_K[k] || 1;   // k=3→1棟、4→2棟、5→3棟（まとめて1タップで破壊）
-
+  // 予測はkスケール込みの実効獲得率（onAttackResolveのkMul適用と一致させる。上限=ATTACK_COIN_CAP_FRAC）
+  // coinRate=0（純破壊面）は0%のまま表示する（|| で25%に化けさせない）
+  const rate = Math.min(
+    Math.round((bonusResult?.coinRate ?? 0.25) * (ATTACK_COIN_KMULT[k] || 1) * 100),
+    ATTACK_COIN_CAP_FRAC * 100);
   const pick = (it) => {
     if (hit) return;                          // 1回のみ攻撃
     const success = opponent.shields <= 0 || ignoreShield;
     setHit(it);
     if (success) {
-      // タップ棟＋価値（建物レベル）降順で残り(destroyCount-1)棟を自動巻き込み
-      const others = village.filter(v => v.id !== it.id).sort((a,b) => b.level - a.level);
-      setHitGroup([it.id, ...others.slice(0, destroyCount - 1).map(v => v.id)]);
+      setHitGroup([it.id]);                   // 破壊は常にタップした1棟（kはコイン倍率で表現）
       setPhase('burst'); SFX.attack();   // まず派手なインパクト → コイン → 破壊
     } else { setPhase('shield'); SFX.shield(); setTimeout(()=>onResolve(it, false), 760); }
   };
@@ -1397,7 +1386,7 @@ function AttackSelect({ opponent, bonusResult, stage=3, k=3, ignoreShield=false,
         <div className="predict-frame">
           <div>💥 破壊成功時: 相手コインの約 <b>{rate}%</b> 獲得</div>
           <div>🛡️ シールド時: 相手コインの約 <b>7%</b> 獲得</div>
-          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label} 破壊{destroyCount}棟（1タップ）</div>}
+          {bonusResult && <div className="predict-bonus">ボーナス: {bonusResult.label}{(ATTACK_COIN_KMULT[k]||1) > 1 && <b>　獲得×{ATTACK_COIN_KMULT[k]}</b>}</div>}
         </div>
       </div>
 
@@ -1787,22 +1776,22 @@ const CARD_SETS = [
     { id:'jack',   name:'黄金の星', img:IMG+'dice/DiceFace_Jackpot.png', gold:true },
   ]},
   { id:'castle', name:'名城巡り', color:'#059669', reward:{ rolls:150, coins:300000 }, cards:[
-    { id:'himeji',  name:'姫路城',       img:IMG+'building/Castle_Himeji.png' },
-    { id:'windsor', name:'ウィンザー城', img:IMG+'building/Castle_Windsor.png' },
-    { id:'taj',     name:'タージ・マハル', img:IMG+'building/Castle_TajMahal.png' },
+    { id:'himeji',  name:'姫路城',       img:IMG+'building/himeji/Castle.png' },
+    { id:'windsor', name:'ウィンザー城', img:IMG+'building/windsor/Castle.png' },
+    { id:'taj',     name:'タージ・マハル', img:IMG+'building/tajmahal/Castle.png' },
     { id:'chest',   name:'埋蔵金',       img:IMG+'ui/TreasureBox_Open.png', gold:true },
   ]},
   { id:'worldE', name:'世界名城・東', color:'#D97706', reward:{ rolls:180, coins:400000 }, cards:[
-    { id:'egypt', name:'ピラミッド',   img:IMG+'building/Castle_Egypt.png' },
-    { id:'china', name:'紫禁城',       img:IMG+'building/Castle_China.png' },
-    { id:'aztec', name:'太陽の神殿',   img:IMG+'building/Castle_Aztec.png' },
+    { id:'egypt', name:'ピラミッド',   img:IMG+'building/egypt/Castle.png' },
+    { id:'china', name:'紫禁城',       img:IMG+'building/china/Castle.png' },
+    { id:'aztec', name:'太陽の神殿',   img:IMG+'building/aztec/Castle.png' },
     { id:'sphinx',name:'黄金のスフィンクス', img:IMG+'card/Card_Sphinx.png', gold:true },
   ]},
   { id:'worldW', name:'世界名城・西', color:'#0EA5E9', reward:{ rolls:240, coins:600000 }, cards:[
-    { id:'greece', name:'パルテノン神殿', img:IMG+'building/Castle_Greece.png' },
-    { id:'russia', name:'聖ワシリイ大聖堂', img:IMG+'building/Castle_Russia.png' },
-    { id:'arabia', name:'砂漠の宮殿',     img:IMG+'building/Castle_Arabia.png' },
-    { id:'dragoncastle', name:'龍宮天空城', img:IMG+'building/Castle_Dragon.png' },
+    { id:'greece', name:'パルテノン神殿', img:IMG+'building/greece/Castle.png' },
+    { id:'russia', name:'聖ワシリイ大聖堂', img:IMG+'building/russia/Castle.png' },
+    { id:'arabia', name:'砂漠の宮殿',     img:IMG+'building/arabia/Castle.png' },
+    { id:'dragoncastle', name:'龍宮天空城', img:IMG+'building/dragon/Castle.png' },
     { id:'risingdragon', name:'昇り龍',   img:IMG+'card/Card_GoldDragon.png', gold:true },
   ]},
   { id:'rivalsHi', name:'群雄割拠', color:'#B91C1C', reward:{ rolls:210, coins:500000 }, cards:[
@@ -3321,8 +3310,8 @@ function App() {
   const onAttackResolve = useCallback((part, success) => {
     const br = flow.bonusResult;
     const k = flow.k;
-    const damage = ATTACK_DESTROY_BY_K[k] || (br?.damage || 1);   // 破壊した棟数＝k−2（ぞろ目由来。通常役はボーナスダイスの棟数のまま）
-    const rate   = br?.coinRate || 0.25;            // 成功時の獲得率（ボーナスダイス由来）
+    const damage = 1;   // 破壊は常にタップした1棟（複数棟破壊は廃止。kはコイン倍率ATTACK_COIN_KMULTで表現）
+    const rate   = br?.coinRate ?? 0.25;            // 成功時の獲得率（coinRate=0の純破壊面は0のまま。||だと25%に化けるバグがあった）
     const e = effRef.current;                        // 装備キャラ効果
     if (!success) {
       setOpponent(o => ({ ...o, shields: Math.max(0, o.shields - 1) }));   // シールドが1枚防ぐ
