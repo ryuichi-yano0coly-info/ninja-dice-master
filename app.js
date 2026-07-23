@@ -1978,7 +1978,7 @@ function MainRoll({
     }
     const gain = calculateCoins(results, game.stage);
     if (ev.kind === 'jpcombo') {
-      const bonus = gain + 3000;
+      const bonus = gain + coinBaseForStage(game.stage); // ステージ依存（旧: +3000固定→高ステージで陳腐化していた。他役と同じcoinBase連動に）
       // ジャックポット×2：jackpot面のみを役色でハイライト
       const idx = new Set();
       results.forEach((f, i) => {
